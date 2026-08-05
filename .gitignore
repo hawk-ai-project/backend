@@ -1,0 +1,17 @@
+# 파이썬 가상환경
+.venv/
+venv/
+
+# PyCharm 설정 파일
+.idea/
+
+# 파이썬 캐시 파일
+__pycache__/
+*.pyc
+
+# 로컬 SQLite DB 파일
+*.db
+*.db-journal
+
+# 보안 민감 설정 파일
+.env
