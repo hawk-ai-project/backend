@@ -116,7 +116,7 @@ def read_root():
             <span class="status-badge">● ONLINE</span>
             <h1>Hawk-AI API Server</h1>
             <p>백엔드 서버가 성공적으로 작동 중입니다.</p>
-            <a href="/docs" class="btn">Swagger API 문서 바로가기</a>
+            <a href="/docs" class="btn">API 문서 바로가기</a>
         </div>
     </body>
     </html>
