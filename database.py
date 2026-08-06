@@ -4,13 +4,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker
 from typing import Dict, Any, List, Optional
 from fastapi import Request, Depends
+from config import settings
 
 # DB 접속 URL 설정: mysql+pymysql://[계정]:[비밀번호]@[아이피]:[포트]/[DB이름]
-# SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:20260804@localhost:3306/cctv_db"
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://cctv_user:cctv1234!@192.168.0.151:3306/cctv_db"
-
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
+    settings.database_url,
     pool_recycle=3600  # MySQL 커넥션 끊김 방지 옵션
 )
 

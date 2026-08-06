@@ -29,6 +29,7 @@ backend/
 ├── sql/
 │   └── menu.sql            # 메뉴 관련 Raw SQL
 ├── crud.py                 # 데이터 CRUD 로직
+├── config.py               # .env 환경 설정 로더
 ├── database.py             # DB 엔진, 세션, SQL 실행 컨텍스트
 ├── main.py                 # FastAPI 앱과 메뉴 API
 ├── models.py               # SQLAlchemy 모델
@@ -70,15 +71,28 @@ python -m pip install -r requirements.txt
 
 ### 4. 데이터베이스 설정
 
-현재 애플리케이션의 MySQL 접속 주소는 `database.py`의 `SQLALCHEMY_DATABASE_URL`에 지정되어 있습니다.
+`.env.example`을 복사해 `.env`를 만들고 로컬 환경에 맞게 값을 변경합니다.
 
-```python
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://사용자:비밀번호@호스트:3306/데이터베이스"
+```bash
+cp .env.example .env
 ```
 
-실행 전에 로컬 환경에 맞게 값을 변경하고 대상 데이터베이스를 생성해야 합니다. 서버 시작 시 SQLAlchemy 모델에 정의된 `question`과 `detection_log` 테이블은 자동으로 생성됩니다.
+Windows PowerShell에서는 다음 명령을 사용할 수 있습니다.
 
-> `.env`에는 `DATABASE_URL` 등의 항목이 있지만 현재 코드에서는 이를 읽지 않습니다. 또한 `alembic.ini`의 마이그레이션 DB URL은 SQLite로 별도 설정되어 있으므로, Alembic을 사용할 때는 애플리케이션 DB와 동일한 주소로 맞춰 주세요. 비밀번호 등 민감한 값은 저장소에 커밋하지 않는 것을 권장합니다.
+```powershell
+Copy-Item .env.example .env
+```
+
+```env
+DATABASE_URL=mysql+pymysql://사용자:비밀번호@호스트:3306/데이터베이스
+SECRET_KEY=충분히-길고-무작위인-비밀키
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+```
+
+`config.py`가 `.env`를 읽으며 애플리케이션과 Alembic 모두 동일한 `DATABASE_URL`을 사용합니다. `DATABASE_URL`과 `SECRET_KEY`가 없으면 애플리케이션은 명확한 오류와 함께 시작을 중단합니다. 실제 `.env`는 `.gitignore`에 포함되어 있으므로 저장소에 커밋하지 마세요.
+
+대상 데이터베이스는 실행 전에 생성해야 합니다. 서버 시작 시 SQLAlchemy 모델에 정의된 `question`과 `detection_log` 테이블은 자동으로 생성됩니다.
 
 메뉴 API를 사용하려면 `sql/menu.sql`에서 조회·등록하는 `menu` 테이블도 데이터베이스에 준비되어 있어야 합니다.
 
@@ -160,7 +174,7 @@ uvicorn main:app --reload
 
 ## Alembic 사용
 
-먼저 `alembic.ini`의 `sqlalchemy.url`을 사용할 DB에 맞춘 뒤 아래 명령을 실행합니다.
+Alembic은 `.env`의 `DATABASE_URL`을 자동으로 사용합니다. 설정을 완료한 뒤 아래 명령을 실행합니다.
 
 ```bash
 alembic upgrade head

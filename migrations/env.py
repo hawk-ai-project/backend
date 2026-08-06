@@ -6,10 +6,15 @@ from sqlalchemy import pool
 from alembic import context
 
 import models
+from config import settings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# Use the same database URL as the application. Alembic's ConfigParser needs
+# percent signs escaped when a URL contains percent-encoded credentials.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
