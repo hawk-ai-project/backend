@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, DatabaseContext, get_db_ctx
 from domain.question import question_router
+from domain.board import board_router
 from sql_loader import load_all_sqls
 
 from fastapi.responses import HTMLResponse  # 추가됨
@@ -21,18 +22,15 @@ app = FastAPI(title="Hawk-AI API Server")
 app.state.sql = load_all_sqls("sql")
 
 origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://192.168.0.151:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-    "http://192.168.0.151:5174",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://192.168.0.151:3000",
 ]
 
 # CORS 미들웨어 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,7 +38,7 @@ app.add_middleware(
 
 # 라우터 등록
 app.include_router(question_router.router)
-
+app.include_router(board_router.router)
 
 # ---------------------------------------------------------
 # 서버 구동 상태 확인용 루트 엔드포인트
