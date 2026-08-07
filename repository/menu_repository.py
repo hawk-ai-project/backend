@@ -6,6 +6,7 @@ from common.db import execute_query, fetch_query
 
 
 def find_active() -> list[dict[str, Any]]:
+    """사용 중인 메뉴를 표시 순서대로 조회한다."""
     rows = fetch_query(
         """SELECT id, parent_id, name, path, icon, menu_type,
                   description, is_use, sort_order
@@ -17,6 +18,7 @@ def find_active() -> list[dict[str, Any]]:
 
 
 def find_by_id(menu_id: int) -> dict[str, Any] | None:
+    """식별자에 해당하는 메뉴 한 건을 조회한다."""
     row = fetch_query(
         """SELECT id, parent_id, name, path, icon, menu_type,
                   description, is_use, sort_order
@@ -29,6 +31,7 @@ def find_by_id(menu_id: int) -> dict[str, Any] | None:
 
 
 def create(data: dict[str, Any]) -> int:
+    """새 메뉴를 등록하고 생성된 식별자를 반환한다."""
     return execute_query(
         """INSERT INTO menu (
             parent_id, name, path, icon, menu_type,

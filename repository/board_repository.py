@@ -25,6 +25,7 @@ JOIN users u ON u.id = b.author_id
 
 
 def _to_board(row: dict[str, Any]) -> dict[str, Any]:
+    """데이터베이스 조회 결과를 게시글 응답 구조로 변환한다."""
     tags = row.pop("tags", [])
     if isinstance(tags, str):
         tags = json.loads(tags)
@@ -41,6 +42,7 @@ def find_all(
     page_size: int,
     keyword: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
+    """공개 게시글 목록과 전체 건수를 페이지 단위로 조회한다."""
     where = "WHERE b.deleted_at IS NULL AND b.status = 'PUBLISHED'"
     params: list[Any] = []
     if keyword:
@@ -65,6 +67,7 @@ def find_all(
 
 
 def find_by_id(board_id: int) -> dict[str, Any] | None:
+    """식별자에 해당하는 공개 게시글 한 건을 조회한다."""
     row = fetch_query(
         f"""{_BOARD_SELECT}
         WHERE b.id = %s

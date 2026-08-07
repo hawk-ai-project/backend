@@ -7,6 +7,7 @@ from common.db import execute_query, fetch_query
 
 
 def find_all() -> list[dict[str, Any]]:
+    """모든 질문을 최신순으로 조회한다."""
     rows = fetch_query(
         """SELECT id, subject, content, create_date
         FROM question
@@ -16,6 +17,7 @@ def find_all() -> list[dict[str, Any]]:
 
 
 def find_by_id(question_id: int) -> dict[str, Any] | None:
+    """식별자에 해당하는 질문 한 건을 조회한다."""
     row = fetch_query(
         """SELECT id, subject, content, create_date
         FROM question
@@ -27,6 +29,7 @@ def find_by_id(question_id: int) -> dict[str, Any] | None:
 
 
 def create(subject: str, content: str) -> int:
+    """새 질문을 등록하고 생성된 식별자를 반환한다."""
     return execute_query(
         """INSERT INTO question (subject, content, create_date)
         VALUES (%s, %s, %s)""",
@@ -35,6 +38,7 @@ def create(subject: str, content: str) -> int:
 
 
 def update(question_id: int, subject: str, content: str) -> int:
+    """식별자에 해당하는 질문의 제목과 내용을 수정한다."""
     return execute_query(
         """UPDATE question
         SET subject = %s, content = %s
@@ -44,4 +48,5 @@ def update(question_id: int, subject: str, content: str) -> int:
 
 
 def delete(question_id: int) -> int:
+    """식별자에 해당하는 질문을 삭제한다."""
     return execute_query("DELETE FROM question WHERE id = %s", (question_id,))
