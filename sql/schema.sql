@@ -18,107 +18,107 @@ SET time_zone = '+00:00';
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS roles (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    code            VARCHAR(30) NOT NULL,
-    name            VARCHAR(50) NOT NULL,
-    description     VARCHAR(255) NULL,
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '역할 고유 식별자',
+    code            VARCHAR(30) NOT NULL COMMENT '역할을 식별하는 고유 코드',
+    name            VARCHAR(50) NOT NULL COMMENT '역할 표시 이름',
+    description     VARCHAR(255) NULL COMMENT '역할의 용도와 권한 설명',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '역할 생성 일시',
     PRIMARY KEY (id),
     UNIQUE KEY uq_roles_code (code)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='사용자 역할 정보';
 
 CREATE TABLE IF NOT EXISTS users (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    role_id         BIGINT UNSIGNED NOT NULL,
-    email           VARCHAR(254) NOT NULL,
-    password_hash   VARCHAR(255) NOT NULL COMMENT 'Argon2id 또는 bcrypt 해시',
-    name            VARCHAR(100) NOT NULL,
-    status          ENUM('PENDING', 'ACTIVE', 'SUSPENDED', 'WITHDRAWN') NOT NULL DEFAULT 'ACTIVE',
-    last_login_at   DATETIME(6) NULL,
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    deleted_at      DATETIME(6) NULL,
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '사용자 고유 식별자',
+    role_id         BIGINT UNSIGNED NOT NULL COMMENT '사용자에게 부여된 역할 식별자',
+    email           VARCHAR(254) NOT NULL COMMENT '로그인에 사용하는 고유 이메일 주소',
+    password_hash   VARCHAR(255) NOT NULL COMMENT 'Argon2id 또는 bcrypt 비밀번호 해시',
+    name            VARCHAR(100) NOT NULL COMMENT '사용자 표시 이름',
+    status          ENUM('PENDING', 'ACTIVE', 'SUSPENDED', 'WITHDRAWN') NOT NULL DEFAULT 'ACTIVE' COMMENT '사용자 계정 상태',
+    last_login_at   DATETIME(6) NULL COMMENT '마지막 로그인 일시',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '사용자 생성 일시',
+    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '사용자 정보 수정 일시',
+    deleted_at      DATETIME(6) NULL COMMENT '소프트 삭제 일시',
     PRIMARY KEY (id),
     UNIQUE KEY uq_users_email (email),
     KEY ix_users_role_status (role_id, status),
     CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='사용자 계정 정보';
 
 CREATE TABLE IF NOT EXISTS auth_sessions (
-    id                  CHAR(36) NOT NULL COMMENT 'JWT sid claim에 넣는 UUID',
-    user_id             BIGINT UNSIGNED NOT NULL,
-    refresh_token_hash  CHAR(64) NULL COMMENT 'refresh token을 사용할 때 SHA-256 hash만 저장',
-    user_agent          VARCHAR(500) NULL,
-    ip_address          VARCHAR(45) NULL,
-    expires_at          DATETIME(6) NOT NULL,
-    last_used_at        DATETIME(6) NULL,
-    revoked_at          DATETIME(6) NULL,
-    created_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    id                  CHAR(36) NOT NULL COMMENT 'JWT sid claim에 넣는 세션 UUID',
+    user_id             BIGINT UNSIGNED NOT NULL COMMENT '세션 소유 사용자 식별자',
+    refresh_token_hash  CHAR(64) NULL COMMENT '리프레시 토큰의 SHA-256 해시',
+    user_agent          VARCHAR(500) NULL COMMENT '접속 클라이언트 User-Agent',
+    ip_address          VARCHAR(45) NULL COMMENT '접속 클라이언트 IPv4 또는 IPv6 주소',
+    expires_at          DATETIME(6) NOT NULL COMMENT '세션 만료 일시',
+    last_used_at        DATETIME(6) NULL COMMENT '세션 마지막 사용 일시',
+    revoked_at          DATETIME(6) NULL COMMENT '세션 폐기 일시',
+    created_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '세션 생성 일시',
     PRIMARY KEY (id),
     UNIQUE KEY uq_auth_sessions_refresh_hash (refresh_token_hash),
     KEY ix_auth_sessions_user_active (user_id, revoked_at, expires_at),
     CONSTRAINT fk_auth_sessions_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='사용자 인증 세션 정보';
 
 -- 현재 backend/sql/menu.sql API와의 호환을 위한 서비스 메뉴.
 CREATE TABLE IF NOT EXISTS menu (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    parent_id       BIGINT UNSIGNED NULL,
-    name            VARCHAR(100) NOT NULL,
-    path            VARCHAR(255) NOT NULL,
-    icon            VARCHAR(100) NULL,
-    menu_type       ENUM('GROUP', 'PAGE', 'ACTION') NOT NULL DEFAULT 'PAGE',
-    description     VARCHAR(500) NULL,
-    is_use          BOOLEAN NOT NULL DEFAULT TRUE,
-    sort_order      INT NOT NULL DEFAULT 0,
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '메뉴 고유 식별자',
+    parent_id       BIGINT UNSIGNED NULL COMMENT '상위 메뉴 식별자',
+    name            VARCHAR(100) NOT NULL COMMENT '메뉴 표시 이름',
+    path            VARCHAR(255) NOT NULL COMMENT '메뉴 라우트 또는 액션 경로',
+    icon            VARCHAR(100) NULL COMMENT '메뉴 아이콘 이름 또는 식별자',
+    menu_type       ENUM('GROUP', 'PAGE', 'ACTION') NOT NULL DEFAULT 'PAGE' COMMENT '메뉴 동작 유형',
+    description     VARCHAR(500) NULL COMMENT '메뉴 설명',
+    is_use          BOOLEAN NOT NULL DEFAULT TRUE COMMENT '메뉴 사용 여부',
+    sort_order      INT NOT NULL DEFAULT 0 COMMENT '동일 계층 내 표시 순서',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '메뉴 생성 일시',
+    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '메뉴 수정 일시',
     PRIMARY KEY (id),
     UNIQUE KEY uq_menu_path (path),
     KEY ix_menu_active_order (is_use, sort_order),
     KEY ix_menu_parent_order (parent_id, sort_order),
     CONSTRAINT fk_menu_parent FOREIGN KEY (parent_id) REFERENCES menu (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='서비스 메뉴 구성 정보';
 
 -- ---------------------------------------------------------------------------
 -- 점검 위치와 현장 점검
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS locations (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    name            VARCHAR(150) NOT NULL,
-    address         VARCHAR(500) NULL,
-    latitude        DECIMAL(10, 7) NULL,
-    longitude       DECIMAL(10, 7) NULL,
-    description     VARCHAR(1000) NULL,
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    created_by      BIGINT UNSIGNED NOT NULL,
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '점검 장소 고유 식별자',
+    name            VARCHAR(150) NOT NULL COMMENT '점검 장소 이름',
+    address         VARCHAR(500) NULL COMMENT '점검 장소 주소',
+    latitude        DECIMAL(10, 7) NULL COMMENT '점검 장소 위도',
+    longitude       DECIMAL(10, 7) NULL COMMENT '점검 장소 경도',
+    description     VARCHAR(1000) NULL COMMENT '점검 장소 상세 설명',
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE COMMENT '점검 장소 활성 여부',
+    created_by      BIGINT UNSIGNED NOT NULL COMMENT '점검 장소를 등록한 사용자 식별자',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '점검 장소 생성 일시',
+    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '점검 장소 수정 일시',
     PRIMARY KEY (id),
     KEY ix_locations_name (name),
     KEY ix_locations_coordinates (latitude, longitude),
     CONSTRAINT ck_locations_latitude CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90),
     CONSTRAINT ck_locations_longitude CHECK (longitude IS NULL OR longitude BETWEEN -180 AND 180),
     CONSTRAINT fk_locations_created_by FOREIGN KEY (created_by) REFERENCES users (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='현장 점검 장소 정보';
 
 CREATE TABLE IF NOT EXISTS inspections (
-    id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    location_id         BIGINT UNSIGNED NULL,
-    inspector_id        BIGINT UNSIGNED NOT NULL,
-    reviewer_id         BIGINT UNSIGNED NULL,
-    title               VARCHAR(200) NOT NULL,
+    id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '점검 고유 식별자',
+    location_id         BIGINT UNSIGNED NULL COMMENT '점검 장소 식별자',
+    inspector_id        BIGINT UNSIGNED NOT NULL COMMENT '점검 수행 사용자 식별자',
+    reviewer_id         BIGINT UNSIGNED NULL COMMENT '점검 검토 사용자 식별자',
+    title               VARCHAR(200) NOT NULL COMMENT '점검 제목',
     notes               TEXT NULL COMMENT '점검자가 작성한 현장 메모',
     ai_opinion          TEXT NULL COMMENT 'LLM이 생성한 점검 의견',
-    status              ENUM('DRAFT', 'ANALYZING', 'REVIEW_REQUIRED', 'ACTION_REQUIRED', 'RESOLVED', 'FAILED') NOT NULL DEFAULT 'DRAFT',
-    priority            ENUM('LOW', 'MEDIUM', 'HIGH', 'URGENT') NOT NULL DEFAULT 'MEDIUM',
-    captured_at         DATETIME(6) NOT NULL,
-    reviewed_at         DATETIME(6) NULL,
-    resolved_at         DATETIME(6) NULL,
-    created_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    updated_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    deleted_at          DATETIME(6) NULL,
+    status              ENUM('DRAFT', 'ANALYZING', 'REVIEW_REQUIRED', 'ACTION_REQUIRED', 'RESOLVED', 'FAILED') NOT NULL DEFAULT 'DRAFT' COMMENT '점검 처리 상태',
+    priority            ENUM('LOW', 'MEDIUM', 'HIGH', 'URGENT') NOT NULL DEFAULT 'MEDIUM' COMMENT '점검 우선순위',
+    captured_at         DATETIME(6) NOT NULL COMMENT '현장 이미지 촬영 또는 점검 수행 일시',
+    reviewed_at         DATETIME(6) NULL COMMENT '점검 검토 완료 일시',
+    resolved_at         DATETIME(6) NULL COMMENT '점검 조치 완료 일시',
+    created_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '점검 생성 일시',
+    updated_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '점검 수정 일시',
+    deleted_at          DATETIME(6) NULL COMMENT '소프트 삭제 일시',
     PRIMARY KEY (id),
     KEY ix_inspections_history (captured_at DESC, id DESC),
     KEY ix_inspections_status_date (status, captured_at DESC),
@@ -127,59 +127,59 @@ CREATE TABLE IF NOT EXISTS inspections (
     CONSTRAINT fk_inspections_location FOREIGN KEY (location_id) REFERENCES locations (id) ON DELETE SET NULL,
     CONSTRAINT fk_inspections_inspector FOREIGN KEY (inspector_id) REFERENCES users (id),
     CONSTRAINT fk_inspections_reviewer FOREIGN KEY (reviewer_id) REFERENCES users (id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='현장 점검 및 처리 상태 정보';
 
 CREATE TABLE IF NOT EXISTS inspection_images (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    inspection_id   BIGINT UNSIGNED NOT NULL,
-    kind            ENUM('ORIGINAL', 'ANNOTATED') NOT NULL DEFAULT 'ORIGINAL',
-    storage_key     VARCHAR(1024) NOT NULL COMMENT '버킷 내부 key; 만료 가능한 공개 URL 저장 금지',
-    original_name   VARCHAR(255) NULL,
-    mime_type       VARCHAR(100) NOT NULL,
-    byte_size       BIGINT UNSIGNED NOT NULL,
-    width           INT UNSIGNED NULL,
-    height          INT UNSIGNED NULL,
-    sha256          CHAR(64) NULL,
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '점검 이미지 고유 식별자',
+    inspection_id   BIGINT UNSIGNED NOT NULL COMMENT '이미지가 속한 점검 식별자',
+    kind            ENUM('ORIGINAL', 'ANNOTATED') NOT NULL DEFAULT 'ORIGINAL' COMMENT '원본 또는 탐지 결과 표시 이미지 구분',
+    storage_key     VARCHAR(1024) NOT NULL COMMENT '객체 스토리지 내부 키',
+    original_name   VARCHAR(255) NULL COMMENT '업로드 당시 원본 파일 이름',
+    mime_type       VARCHAR(100) NOT NULL COMMENT '이미지 MIME 유형',
+    byte_size       BIGINT UNSIGNED NOT NULL COMMENT '이미지 파일 크기(바이트)',
+    width           INT UNSIGNED NULL COMMENT '이미지 너비(픽셀)',
+    height          INT UNSIGNED NULL COMMENT '이미지 높이(픽셀)',
+    sha256          CHAR(64) NULL COMMENT '이미지 파일 SHA-256 해시',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '이미지 메타데이터 생성 일시',
     PRIMARY KEY (id),
     UNIQUE KEY uq_inspection_images_storage_key (storage_key),
     KEY ix_inspection_images_inspection_kind (inspection_id, kind),
     CONSTRAINT ck_inspection_images_byte_size CHECK (byte_size > 0),
     CONSTRAINT ck_inspection_images_dimensions CHECK ((width IS NULL AND height IS NULL) OR (width > 0 AND height > 0)),
     CONSTRAINT fk_inspection_images_inspection FOREIGN KEY (inspection_id) REFERENCES inspections (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='점검 원본 및 분석 이미지 정보';
 
 -- ---------------------------------------------------------------------------
 -- AI 분석과 객체 탐지
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS waste_types (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    code            VARCHAR(50) NOT NULL COMMENT '모델 class code',
-    name_ko         VARCHAR(100) NOT NULL,
-    name_en         VARCHAR(100) NULL,
-    description     VARCHAR(500) NULL,
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '폐기물 유형 고유 식별자',
+    code            VARCHAR(50) NOT NULL COMMENT 'AI 모델에서 사용하는 클래스 코드',
+    name_ko         VARCHAR(100) NOT NULL COMMENT '폐기물 유형 한글 이름',
+    name_en         VARCHAR(100) NULL COMMENT '폐기물 유형 영문 이름',
+    description     VARCHAR(500) NULL COMMENT '폐기물 유형 상세 설명',
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE COMMENT '폐기물 유형 사용 여부',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '폐기물 유형 생성 일시',
     PRIMARY KEY (id),
     UNIQUE KEY uq_waste_types_code (code),
     UNIQUE KEY uq_waste_types_name_ko (name_ko)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI가 분류하는 폐기물 유형 정보';
 
 CREATE TABLE IF NOT EXISTS detection_runs (
-    id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    inspection_id       BIGINT UNSIGNED NOT NULL,
-    source_image_id     BIGINT UNSIGNED NOT NULL,
-    annotated_image_id  BIGINT UNSIGNED NULL,
-    model_name          VARCHAR(100) NOT NULL,
-    model_version       VARCHAR(100) NOT NULL,
-    status              ENUM('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED') NOT NULL DEFAULT 'QUEUED',
-    inference_ms        INT UNSIGNED NULL,
-    raw_result          JSON NULL COMMENT '모델 원본 응답 보존용; 검색 필드는 detections에 정규화',
-    error_message       TEXT NULL,
-    started_at          DATETIME(6) NULL,
-    completed_at        DATETIME(6) NULL,
-    created_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'AI 탐지 실행 고유 식별자',
+    inspection_id       BIGINT UNSIGNED NOT NULL COMMENT '분석 대상 점검 식별자',
+    source_image_id     BIGINT UNSIGNED NOT NULL COMMENT '분석에 사용한 원본 이미지 식별자',
+    annotated_image_id  BIGINT UNSIGNED NULL COMMENT '탐지 결과가 표시된 이미지 식별자',
+    model_name          VARCHAR(100) NOT NULL COMMENT '추론에 사용한 AI 모델 이름',
+    model_version       VARCHAR(100) NOT NULL COMMENT '추론에 사용한 AI 모델 버전',
+    status              ENUM('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED') NOT NULL DEFAULT 'QUEUED' COMMENT 'AI 탐지 실행 상태',
+    inference_ms        INT UNSIGNED NULL COMMENT 'AI 모델 추론 소요 시간(밀리초)',
+    raw_result          JSON NULL COMMENT 'AI 모델의 정규화 전 원본 응답',
+    error_message       TEXT NULL COMMENT '탐지 실패 시 오류 메시지',
+    started_at          DATETIME(6) NULL COMMENT '탐지 실행 시작 일시',
+    completed_at        DATETIME(6) NULL COMMENT '탐지 실행 완료 일시',
+    created_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '탐지 실행 레코드 생성 일시',
     PRIMARY KEY (id),
     KEY ix_detection_runs_inspection (inspection_id, created_at DESC),
     KEY ix_detection_runs_status_created (status, created_at),
@@ -187,18 +187,18 @@ CREATE TABLE IF NOT EXISTS detection_runs (
     CONSTRAINT fk_detection_runs_inspection FOREIGN KEY (inspection_id) REFERENCES inspections (id) ON DELETE CASCADE,
     CONSTRAINT fk_detection_runs_source_image FOREIGN KEY (source_image_id) REFERENCES inspection_images (id),
     CONSTRAINT fk_detection_runs_annotated_image FOREIGN KEY (annotated_image_id) REFERENCES inspection_images (id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI 객체 탐지 실행 정보';
 
 CREATE TABLE IF NOT EXISTS detections (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    detection_run_id BIGINT UNSIGNED NOT NULL,
-    waste_type_id   BIGINT UNSIGNED NOT NULL,
-    confidence      DECIMAL(6, 5) NOT NULL,
-    bbox_x          DECIMAL(8, 7) NOT NULL COMMENT '0~1 정규화 좌상단 x',
-    bbox_y          DECIMAL(8, 7) NOT NULL COMMENT '0~1 정규화 좌상단 y',
-    bbox_width      DECIMAL(8, 7) NOT NULL COMMENT '0~1 정규화 너비',
-    bbox_height     DECIMAL(8, 7) NOT NULL COMMENT '0~1 정규화 높이',
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '탐지 객체 고유 식별자',
+    detection_run_id BIGINT UNSIGNED NOT NULL COMMENT '탐지 객체가 속한 AI 실행 식별자',
+    waste_type_id   BIGINT UNSIGNED NOT NULL COMMENT '탐지된 폐기물 유형 식별자',
+    confidence      DECIMAL(6, 5) NOT NULL COMMENT '0부터 1 사이의 탐지 신뢰도',
+    bbox_x          DECIMAL(8, 7) NOT NULL COMMENT '0부터 1로 정규화된 바운딩 박스 좌상단 X 좌표',
+    bbox_y          DECIMAL(8, 7) NOT NULL COMMENT '0부터 1로 정규화된 바운딩 박스 좌상단 Y 좌표',
+    bbox_width      DECIMAL(8, 7) NOT NULL COMMENT '0부터 1로 정규화된 바운딩 박스 너비',
+    bbox_height     DECIMAL(8, 7) NOT NULL COMMENT '0부터 1로 정규화된 바운딩 박스 높이',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '탐지 객체 생성 일시',
     PRIMARY KEY (id),
     KEY ix_detections_run_type (detection_run_id, waste_type_id),
     KEY ix_detections_type_created (waste_type_id, created_at),
@@ -212,75 +212,75 @@ CREATE TABLE IF NOT EXISTS detections (
     ),
     CONSTRAINT fk_detections_run FOREIGN KEY (detection_run_id) REFERENCES detection_runs (id) ON DELETE CASCADE,
     CONSTRAINT fk_detections_waste_type FOREIGN KEY (waste_type_id) REFERENCES waste_types (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI 실행에서 탐지된 개별 객체 정보';
 
 -- 점검 처리 상태와 담당 이력을 별도로 남겨 감사 추적 및 처리시간 통계에 사용한다.
 CREATE TABLE IF NOT EXISTS inspection_actions (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    inspection_id   BIGINT UNSIGNED NOT NULL,
-    assignee_id     BIGINT UNSIGNED NULL,
-    created_by      BIGINT UNSIGNED NOT NULL,
-    action_type     ENUM('REVIEW', 'COLLECTION_REQUEST', 'COLLECTION', 'REINSPECTION', 'OTHER') NOT NULL,
-    status          ENUM('OPEN', 'IN_PROGRESS', 'DONE', 'CANCELLED') NOT NULL DEFAULT 'OPEN',
-    description     TEXT NOT NULL,
-    due_at          DATETIME(6) NULL,
-    completed_at    DATETIME(6) NULL,
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '점검 후속 조치 고유 식별자',
+    inspection_id   BIGINT UNSIGNED NOT NULL COMMENT '후속 조치 대상 점검 식별자',
+    assignee_id     BIGINT UNSIGNED NULL COMMENT '후속 조치 담당 사용자 식별자',
+    created_by      BIGINT UNSIGNED NOT NULL COMMENT '후속 조치를 등록한 사용자 식별자',
+    action_type     ENUM('REVIEW', 'COLLECTION_REQUEST', 'COLLECTION', 'REINSPECTION', 'OTHER') NOT NULL COMMENT '후속 조치 유형',
+    status          ENUM('OPEN', 'IN_PROGRESS', 'DONE', 'CANCELLED') NOT NULL DEFAULT 'OPEN' COMMENT '후속 조치 진행 상태',
+    description     TEXT NOT NULL COMMENT '후속 조치 상세 내용',
+    due_at          DATETIME(6) NULL COMMENT '후속 조치 완료 기한',
+    completed_at    DATETIME(6) NULL COMMENT '후속 조치 완료 일시',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '후속 조치 생성 일시',
+    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '후속 조치 수정 일시',
     PRIMARY KEY (id),
     KEY ix_inspection_actions_inspection (inspection_id, created_at DESC),
     KEY ix_inspection_actions_assignee_status (assignee_id, status, due_at),
     CONSTRAINT fk_inspection_actions_inspection FOREIGN KEY (inspection_id) REFERENCES inspections (id) ON DELETE CASCADE,
     CONSTRAINT fk_inspection_actions_assignee FOREIGN KEY (assignee_id) REFERENCES users (id) ON DELETE SET NULL,
     CONSTRAINT fk_inspection_actions_created_by FOREIGN KEY (created_by) REFERENCES users (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='점검 후속 조치 및 처리 이력';
 
 CREATE TABLE IF NOT EXISTS inspection_status_history (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    inspection_id   BIGINT UNSIGNED NOT NULL,
-    changed_by      BIGINT UNSIGNED NULL COMMENT '시스템 변경이면 NULL',
-    from_status     ENUM('DRAFT', 'ANALYZING', 'REVIEW_REQUIRED', 'ACTION_REQUIRED', 'RESOLVED', 'FAILED') NULL,
-    to_status       ENUM('DRAFT', 'ANALYZING', 'REVIEW_REQUIRED', 'ACTION_REQUIRED', 'RESOLVED', 'FAILED') NOT NULL,
-    reason          VARCHAR(1000) NULL,
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '점검 상태 변경 이력 고유 식별자',
+    inspection_id   BIGINT UNSIGNED NOT NULL COMMENT '상태가 변경된 점검 식별자',
+    changed_by      BIGINT UNSIGNED NULL COMMENT '상태를 변경한 사용자 식별자이며 시스템 변경이면 NULL',
+    from_status     ENUM('DRAFT', 'ANALYZING', 'REVIEW_REQUIRED', 'ACTION_REQUIRED', 'RESOLVED', 'FAILED') NULL COMMENT '변경 전 점검 상태',
+    to_status       ENUM('DRAFT', 'ANALYZING', 'REVIEW_REQUIRED', 'ACTION_REQUIRED', 'RESOLVED', 'FAILED') NOT NULL COMMENT '변경 후 점검 상태',
+    reason          VARCHAR(1000) NULL COMMENT '상태 변경 사유',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '상태 변경 일시',
     PRIMARY KEY (id),
     KEY ix_inspection_status_history_lookup (inspection_id, created_at DESC),
     CONSTRAINT fk_inspection_status_history_inspection FOREIGN KEY (inspection_id) REFERENCES inspections (id) ON DELETE CASCADE,
     CONSTRAINT fk_inspection_status_history_changed_by FOREIGN KEY (changed_by) REFERENCES users (id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='점검 상태 변경 이력';
 
 -- ---------------------------------------------------------------------------
 -- 게시판
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS board_categories (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    code            VARCHAR(50) NOT NULL,
-    name            VARCHAR(50) NOT NULL,
-    sort_order      INT NOT NULL DEFAULT 0,
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '게시판 카테고리 고유 식별자',
+    code            VARCHAR(50) NOT NULL COMMENT '게시판 카테고리를 식별하는 고유 코드',
+    name            VARCHAR(50) NOT NULL COMMENT '게시판 카테고리 표시 이름',
+    sort_order      INT NOT NULL DEFAULT 0 COMMENT '게시판 카테고리 표시 순서',
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE COMMENT '게시판 카테고리 사용 여부',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '게시판 카테고리 생성 일시',
     PRIMARY KEY (id),
     UNIQUE KEY uq_board_categories_code (code),
     UNIQUE KEY uq_board_categories_name (name)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='게시판 카테고리 정보';
 
 CREATE TABLE IF NOT EXISTS boards (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    category_id     BIGINT UNSIGNED NOT NULL,
-    author_id       BIGINT UNSIGNED NOT NULL,
-    inspection_id   BIGINT UNSIGNED NULL COMMENT '점검 결과 게시글일 때 원본 점검 연결',
-    title           VARCHAR(100) NOT NULL,
-    summary         VARCHAR(500) NULL,
-    content         MEDIUMTEXT NOT NULL COMMENT 'Markdown 원문',
-    thumbnail_url   VARCHAR(1024) NULL,
-    is_notice       BOOLEAN NOT NULL DEFAULT FALSE,
-    status          ENUM('DRAFT', 'PUBLISHED', 'HIDDEN') NOT NULL DEFAULT 'PUBLISHED',
-    view_count      BIGINT UNSIGNED NOT NULL DEFAULT 0,
-    published_at    DATETIME(6) NULL,
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    deleted_at      DATETIME(6) NULL,
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '게시글 고유 식별자',
+    category_id     BIGINT UNSIGNED NOT NULL COMMENT '게시글 카테고리 식별자',
+    author_id       BIGINT UNSIGNED NOT NULL COMMENT '게시글 작성자 식별자',
+    inspection_id   BIGINT UNSIGNED NULL COMMENT '게시글에 연결된 원본 점검 식별자',
+    title           VARCHAR(100) NOT NULL COMMENT '게시글 제목',
+    summary         VARCHAR(500) NULL COMMENT '게시글 요약',
+    content         MEDIUMTEXT NOT NULL COMMENT 'Markdown 형식의 게시글 본문',
+    thumbnail_url   VARCHAR(1024) NULL COMMENT '게시글 썸네일 이미지 URL',
+    is_notice       BOOLEAN NOT NULL DEFAULT FALSE COMMENT '공지 게시글 여부',
+    status          ENUM('DRAFT', 'PUBLISHED', 'HIDDEN') NOT NULL DEFAULT 'PUBLISHED' COMMENT '게시글 공개 상태',
+    view_count      BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '게시글 조회 수',
+    published_at    DATETIME(6) NULL COMMENT '게시글 공개 일시',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '게시글 생성 일시',
+    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '게시글 수정 일시',
+    deleted_at      DATETIME(6) NULL COMMENT '소프트 삭제 일시',
     PRIMARY KEY (id),
     KEY ix_boards_list (status, is_notice DESC, published_at DESC, id DESC),
     KEY ix_boards_category_list (category_id, status, published_at DESC),
@@ -290,29 +290,29 @@ CREATE TABLE IF NOT EXISTS boards (
     CONSTRAINT fk_boards_category FOREIGN KEY (category_id) REFERENCES board_categories (id),
     CONSTRAINT fk_boards_author FOREIGN KEY (author_id) REFERENCES users (id),
     CONSTRAINT fk_boards_inspection FOREIGN KEY (inspection_id) REFERENCES inspections (id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='게시판 게시글 정보';
 
 CREATE TABLE IF NOT EXISTS tags (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    name            VARCHAR(20) NOT NULL,
-    normalized_name VARCHAR(20) NOT NULL COMMENT 'trim 후 소문자 변환한 중복 판정 값',
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '태그 고유 식별자',
+    name            VARCHAR(20) NOT NULL COMMENT '사용자에게 표시되는 태그 이름',
+    normalized_name VARCHAR(20) NOT NULL COMMENT '공백 제거 및 소문자 변환을 거친 중복 판정 값',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '태그 생성 일시',
     PRIMARY KEY (id),
     UNIQUE KEY uq_tags_normalized_name (normalized_name)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='게시글 분류용 태그 정보';
 
 CREATE TABLE IF NOT EXISTS board_tags (
-    board_id        BIGINT UNSIGNED NOT NULL,
-    tag_id          BIGINT UNSIGNED NOT NULL,
-    sort_order      TINYINT UNSIGNED NOT NULL DEFAULT 0,
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    board_id        BIGINT UNSIGNED NOT NULL COMMENT '태그가 연결된 게시글 식별자',
+    tag_id          BIGINT UNSIGNED NOT NULL COMMENT '게시글에 연결된 태그 식별자',
+    sort_order      TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '게시글 내 태그 표시 순서',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '게시글과 태그 연결 생성 일시',
     PRIMARY KEY (board_id, tag_id),
     UNIQUE KEY uq_board_tags_order (board_id, sort_order),
     KEY ix_board_tags_tag (tag_id, board_id),
     CONSTRAINT ck_board_tags_sort_order CHECK (sort_order < 8),
     CONSTRAINT fk_board_tags_board FOREIGN KEY (board_id) REFERENCES boards (id) ON DELETE CASCADE,
     CONSTRAINT fk_board_tags_tag FOREIGN KEY (tag_id) REFERENCES tags (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='게시글과 태그의 연결 정보';
 
 -- ---------------------------------------------------------------------------
 -- 기준 데이터 (여러 번 실행해도 안전)
