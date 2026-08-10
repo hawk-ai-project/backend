@@ -47,7 +47,13 @@ def find_inspection_history(
         f"""SELECT i.id, i.title, COALESCE(l.name, '미지정 위치') AS location,
                    i.status, i.priority, i.captured_at AS capturedAt,
                    i.notes, i.ai_opinion AS aiOpinion, u.name AS inspectorName,
-                   COALESCE(waste_summary.summary, '탐지 결과 없음') AS wasteSummary
+                   COALESCE(waste_summary.summary, '탐지 결과 없음') AS wasteSummary,
+                   COALESCE(waste_summary.detections, JSON_ARRAY()) AS detections,
+                   (SELECT image.id
+                    FROM inspection_images image
+                    WHERE image.inspection_id = i.id
+                    ORDER BY image.kind = 'ANNOTATED' DESC, image.id DESC
+                    LIMIT 1) AS imageId
             FROM inspections i
             LEFT JOIN locations l ON l.id = i.location_id
             JOIN users u ON u.id = i.inspector_id
@@ -56,7 +62,10 @@ def find_inspection_history(
                        GROUP_CONCAT(
                            CONCAT(wt.name_ko, ' ', counted.detected_count, '개')
                            ORDER BY wt.name_ko SEPARATOR ', '
-                       ) AS summary
+                       ) AS summary,
+                       JSON_ARRAYAGG(
+                           JSON_OBJECT('className', wt.name_ko, 'count', counted.detected_count)
+                       ) AS detections
                 FROM (
                     SELECT dr.inspection_id, d.waste_type_id, COUNT(*) AS detected_count
                     FROM detection_runs dr
@@ -73,3 +82,25 @@ def find_inspection_history(
         (*params, limit),
     )
     return rows if isinstance(rows, list) else []
+
+
+def find_accessible_inspection_image(
+    inspection_id: int,
+    user_id: int,
+    is_admin: bool,
+) -> dict[str, Any] | None:
+    permission = "" if is_admin else "AND i.inspector_id = %s"
+    params = (inspection_id,) if is_admin else (inspection_id, user_id)
+    row = fetch_query(
+        f"""SELECT image.id, image.inspection_id AS inspectionId, image.storage_key AS storageKey,
+                   image.original_name AS originalName, image.mime_type AS mimeType,
+                   image.byte_size AS byteSize
+            FROM inspections i
+            JOIN inspection_images image ON image.inspection_id = i.id
+            WHERE i.id = %s AND i.deleted_at IS NULL {permission}
+            ORDER BY image.kind = 'ANNOTATED' DESC, image.id DESC
+            LIMIT 1""",
+        params,
+        one=True,
+    )
+    return row if isinstance(row, dict) else None

@@ -7,10 +7,11 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 from minio import Minio
+from minio.commonconfig import CopySource
 from minio.error import S3Error
 
 from config import settings
-from repository import file_repository
+from repository import chat_repository, file_repository
 
 
 _client: Minio | None = None
@@ -132,6 +133,72 @@ def upload_board_image(file: UploadFile, user_id: int) -> dict:
     uploaded = upload(file, user_id, object_root="board-images")
     uploaded["imageUrl"] = f"/api/boards/images/{quote(uploaded['objectKey'], safe='/')}"
     return uploaded
+
+
+def copy_inspection_image_to_board(inspection_id: int, user: dict) -> dict:
+    source = chat_repository.find_accessible_inspection_image(
+        inspection_id,
+        user["id"],
+        user.get("role") == "ADMIN",
+    )
+    if source is None or source["mimeType"] not in BOARD_IMAGE_TYPES:
+        raise HTTPException(status_code=404, detail="Inspection image not found.")
+
+    object_key = _object_key(user["id"], source.get("originalName"), "board-images")
+    client = get_client()
+    try:
+        copied = client.copy_object(
+            settings.minio_bucket,
+            object_key,
+            CopySource(settings.minio_bucket, source["storageKey"]),
+        )
+    except S3Error as exc:
+        if exc.code in {"NoSuchKey", "NoSuchObject"}:
+            raise HTTPException(status_code=404, detail="Inspection image not found.") from exc
+        raise HTTPException(status_code=502, detail="Inspection image could not be copied.") from exc
+
+    try:
+        file_id = file_repository.create(
+            uploaded_by=user["id"],
+            bucket_name=settings.minio_bucket,
+            object_key=object_key,
+            original_name=source.get("originalName") or f"inspection-{inspection_id}",
+            mime_type=source["mimeType"],
+            byte_size=source["byteSize"],
+            etag=copied.etag,
+        )
+    except Exception as exc:
+        try:
+            client.remove_object(settings.minio_bucket, object_key)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="Copied image metadata could not be saved.") from exc
+
+    encoded_key = quote(object_key, safe="/")
+    return {
+        "fileId": file_id,
+        "objectKey": object_key,
+        "originalName": source.get("originalName") or f"inspection-{inspection_id}",
+        "contentType": source["mimeType"],
+        "size": source["byteSize"],
+        "imageUrl": f"/api/boards/images/{encoded_key}",
+    }
+
+
+def open_inspection_image(inspection_id: int, user: dict):
+    source = chat_repository.find_accessible_inspection_image(
+        inspection_id,
+        user["id"],
+        user.get("role") == "ADMIN",
+    )
+    if source is None or source["mimeType"] not in BOARD_IMAGE_TYPES:
+        raise HTTPException(status_code=404, detail="Inspection image not found.")
+    try:
+        return get_client().get_object(settings.minio_bucket, source["storageKey"]), source["mimeType"]
+    except S3Error as exc:
+        if exc.code in {"NoSuchKey", "NoSuchObject"}:
+            raise HTTPException(status_code=404, detail="Inspection image not found.") from exc
+        raise HTTPException(status_code=502, detail="Inspection image could not be loaded.") from exc
 
 
 def open_board_image(object_key: str):

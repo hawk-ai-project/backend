@@ -25,8 +25,21 @@ class ChatSource(BaseModel):
     capturedAt: datetime
 
 
+class ChatAction(BaseModel):
+    label: str
+    href: str
+
+    @field_validator("href")
+    @classmethod
+    def require_internal_path(cls, value: str) -> str:
+        if not value.startswith("/") or value.startswith("//"):
+            raise ValueError("내부 상대 경로만 사용할 수 있습니다.")
+        return value
+
+
 class ChatResponse(BaseModel):
     answer: str
     type: ChatIntent
     sourceType: ChatSourceType
     sources: list[ChatSource] = Field(default_factory=list)
+    actions: list[ChatAction] = Field(default_factory=list, max_length=2)

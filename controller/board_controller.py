@@ -26,6 +26,11 @@ def upload_board_image(file: UploadFile = File(...), auth=Depends(current_auth))
         file.file.close()
 
 
+@router.post("/images/from-inspection/{inspection_id}", response_model=BoardImageUploadResponse)
+def copy_inspection_image(inspection_id: int, auth=Depends(current_auth)):
+    return file_service.copy_inspection_image_to_board(inspection_id, auth[0])
+
+
 @router.get("/images/{object_key:path}")
 def read_board_image(object_key: str):
     stored_file, content_type = file_service.open_board_image(object_key)

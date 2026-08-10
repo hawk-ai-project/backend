@@ -21,6 +21,15 @@ PROJECT_KEYWORDS = (
 )
 DYNAMIC_HINTS = ("최근", "최신", "마지막", "점검 목록", "점검 내역", "점검 결과", "점검 이력", "발견", "탐지")
 COMPLEX_HISTORY_HINTS = ("특징", "경향", "비교", "분석", "공통점", "요약해", "설명해")
+ACTION_MAP = {
+    "HOME": {"label": "HOME 보기", "href": "/"},
+    "INSPECTION_START": {"label": "현장점검 시작", "href": "/inspection"},
+    "INSPECTION_HISTORY": {"label": "점검이력 보기", "href": "/histories"},
+    "BOARD_LIST": {"label": "게시판 보기", "href": "/boards"},
+    "BOARD_WRITE": {"label": "게시글 작성하기", "href": "/boards/write"},
+    "LOGIN": {"label": "로그인하기", "href": "/login"},
+}
+ALLOWED_ACTION_HREFS = {action["href"] for action in ACTION_MAP.values()}
 
 
 def _load_json(name: str) -> Any:
@@ -200,10 +209,53 @@ def _generate(context: str, message: str) -> str:
         raise HTTPException(status_code=502, detail=f"챗봇 응답을 처리할 수 없습니다: {error}") from error
 
 
-def _result(answer: str, intent: str, source_type: str, started: float, sources: list | None = None, records: int | None = None) -> dict:
+def _actions_for_keys(*keys: str | None) -> list[dict]:
+    actions = []
+    used_hrefs = set()
+    for key in keys:
+        action = ACTION_MAP.get(key or "")
+        if not action or action["href"] not in ALLOWED_ACTION_HREFS or action["href"] in used_hrefs:
+            continue
+        actions.append(action.copy())
+        used_hrefs.add(action["href"])
+        if len(actions) == 2:
+            break
+    return actions
+
+
+def _sanitize_actions(actions: list | None) -> list[dict]:
+    safe = []
+    used_hrefs = set()
+    for action in actions or []:
+        href = action.get("href", "")
+        if href not in ALLOWED_ACTION_HREFS or href in used_hrefs:
+            continue
+        safe.append({"label": str(action.get("label", "이동")), "href": href})
+        used_hrefs.add(href)
+        if len(safe) == 2:
+            break
+    return safe
+
+
+def _message_action_key(message: str) -> str | None:
+    normalized = message.lower()
+    if "게시" in normalized and any(word in normalized for word in ("작성", "글 쓰", "글쓰", "만들")):
+        return "BOARD_WRITE"
+    if "게시" in normalized and any(word in normalized for word in ("보여", "목록", "어디", "기능")):
+        return "BOARD_LIST"
+    if any(word in normalized for word in ("점검이력", "점검 이력", "점검 목록", "과거 점검")):
+        return "INSPECTION_HISTORY"
+    if any(word in normalized for word in ("점검 시작", "카메라 분석", "현장점검", "현장 점검", "촬영")):
+        return "INSPECTION_START"
+    if any(word in normalized for word in ("로그인", "회원가입", "인증")):
+        return "LOGIN"
+    return None
+
+
+def _result(answer: str, intent: str, source_type: str, started: float, sources: list | None = None, records: int | None = None, actions: list | None = None) -> dict:
     record_log = f" records={records}" if records is not None else ""
     logger.info("[CHAT] intent=%s source=%s%s elapsed=%.3fs", intent, source_type, record_log, perf_counter() - started)
-    return {"answer": answer, "type": intent, "sourceType": source_type, "sources": sources or []}
+    return {"answer": answer, "type": intent, "sourceType": source_type, "sources": sources or [], "actions": _sanitize_actions(actions)}
 
 
 def chat(message: str, user: dict | None) -> dict:
@@ -221,12 +273,13 @@ def chat(message: str, user: dict | None) -> dict:
             waste=query["waste"],
         )
         if not rows:
-            return _result("조건에 해당하는 점검 이력을 찾지 못했습니다.", "INSPECTION_HISTORY", "INSPECTION_DB", started, records=0)
+            return _result("조건에 해당하는 점검 이력을 찾지 못했습니다.", "INSPECTION_HISTORY", "INSPECTION_DB", started, records=0, actions=_actions_for_keys("INSPECTION_HISTORY"))
         sources = [{"id": row["id"], "location": row["location"], "capturedAt": row["capturedAt"]} for row in rows]
+        history_actions = _actions_for_keys("INSPECTION_HISTORY")
         if query["complex"]:
             answer = _generate(_history_context(rows), message)
-            return _result(answer, "INSPECTION_HISTORY", "QWEN", started, sources, len(rows))
-        return _result(_history_template(rows), "INSPECTION_HISTORY", "INSPECTION_DB", started, sources, len(rows))
+            return _result(answer, "INSPECTION_HISTORY", "QWEN", started, sources, len(rows), history_actions)
+        return _result(_history_template(rows), "INSPECTION_HISTORY", "INSPECTION_DB", started, sources, len(rows), history_actions)
 
     if _is_project_question(message):
         answer = _project_template(message, _load_json("project_info.json"))
@@ -235,14 +288,14 @@ def chat(message: str, user: dict | None) -> dict:
     faqs = _load_json("faq.json")
     faq = _faq_exact(message, faqs)
     if faq:
-        return _result(faq["answer"], "FAQ", "STATIC_FAQ", started)
+        return _result(faq["answer"], "FAQ", "STATIC_FAQ", started, actions=_actions_for_keys(faq.get("action")))
     faq = _faq_keyword_match(message, faqs)
     if faq:
-        return _result(faq["answer"], "FAQ", "STATIC_FAQ", started)
+        return _result(faq["answer"], "FAQ", "STATIC_FAQ", started, actions=_actions_for_keys(faq.get("action")))
 
     ranked = sorted(faqs, key=lambda item: _faq_score(message, item), reverse=True)
     relevant = [item for item in ranked[:3] if _faq_score(message, item) > 0]
     context = "\n".join(f"- {item['question']}: {item['answer']}" for item in relevant)
     if not context:
         context = _load_json("project_info.json")["project"]["description"]
-    return _result(_generate(context, message), "FAQ", "QWEN", started)
+    return _result(_generate(context, message), "FAQ", "QWEN", started, actions=_actions_for_keys(_message_action_key(message)))
