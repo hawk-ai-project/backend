@@ -10,7 +10,10 @@ app.add_exception_handler(AuthError, auth_controller.auth_error_response)
 
 origins = [
     "http://localhost:3000",
+    "http://localhost:3001",
     "http://127.0.0.1:3000",
+    "http://192.168.0.172:3000",
+    "http://192.168.0.172:3001",
     "http://192.168.0.151:3000",
 ]
 
