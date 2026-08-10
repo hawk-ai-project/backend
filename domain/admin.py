@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AdminUser(BaseModel):
@@ -31,3 +31,13 @@ class DashboardStats(BaseModel):
     publishedBoards: int
     totalInspections: int
     recentUsers: list[AdminUser]
+
+
+class AdminRole(BaseModel):
+    code: str
+    name: str
+    description: str | None
+
+
+class RoleUpdateRequest(BaseModel):
+    roleCode: str = Field(min_length=1, max_length=30, pattern=r"^[A-Z_]+$")

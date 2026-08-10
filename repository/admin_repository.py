@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from common.db import fetch_query
+from common.db import execute_query, fetch_query
 
 
 _USER_SELECT = """
@@ -57,3 +57,31 @@ def recent_users(limit: int = 5) -> list[dict[str, Any]]:
         (limit,),
     )
     return rows if isinstance(rows, list) else []
+
+
+def find_roles() -> list[dict[str, Any]]:
+    rows = fetch_query(
+        "SELECT code, name, description FROM roles ORDER BY id"
+    )
+    return rows if isinstance(rows, list) else []
+
+
+def count_admins() -> int:
+    row = fetch_query(
+        """SELECT COUNT(*) AS total FROM users u
+        JOIN roles r ON r.id = u.role_id
+        WHERE u.deleted_at IS NULL AND u.status = 'ACTIVE' AND r.code = 'ADMIN'""",
+        one=True,
+    )
+    return int(row["total"]) if isinstance(row, dict) else 0
+
+
+def update_user_role(user_id: int, role_code: str) -> bool:
+    affected = execute_query(
+        """UPDATE users u
+        JOIN roles r ON r.code = %s
+        SET u.role_id = r.id
+        WHERE u.id = %s AND u.deleted_at IS NULL""",
+        (role_code, user_id),
+    )
+    return affected > 0

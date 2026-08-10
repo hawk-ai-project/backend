@@ -3,7 +3,8 @@
 from fastapi import APIRouter, Depends, Query
 
 from controller.auth_controller import current_auth
-from domain.admin import AdminUserPage, DashboardStats
+from domain.admin import AdminRole, AdminUserPage, DashboardStats, RoleUpdateRequest
+from domain.auth import UserResponse
 from service import admin_service
 
 
@@ -27,3 +28,13 @@ def users(
     _admin=Depends(current_admin),
 ):
     return admin_service.get_users(page, pageSize, keyword.strip() if keyword else None)
+
+
+@router.get("/roles", response_model=list[AdminRole])
+def roles(_admin=Depends(current_admin)):
+    return admin_service.get_roles()
+
+
+@router.patch("/users/{user_id}/role", response_model=UserResponse)
+def update_role(user_id: int, payload: RoleUpdateRequest, admin=Depends(current_admin)):
+    return admin_service.change_user_role(admin, user_id, payload.roleCode)
