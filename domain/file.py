@@ -10,3 +10,12 @@ class FileUploadResponse(BaseModel):
     contentType: str
     size: int
     downloadUrl: str
+
+
+class BoardImageUploadResponse(BaseModel):
+    fileId: int
+    objectKey: str
+    originalName: str
+    contentType: str
+    size: int
+    imageUrl: str

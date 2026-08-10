@@ -29,8 +29,8 @@
   "members": [
     {
       "name": "김도하",
-      "role": "HOME · LLM · 게시판",
-      "features": ["서비스 소개와 메인 UI", "LLM API 연동", "게시판 CRUD·검색·페이징", "AI 게시글 초안 생성"]
+      "role": "HOME · LLM · 게시판 · 챗봇",
+      "features": ["서비스 소개와 메인 UI", "LLM API 연동", "게시판 CRUD·검색·페이징", "AI 게시글 초안 생성", "Grounded 챗봇과 실제 점검이력 응답"]
     },
     {
       "name": "이중호",

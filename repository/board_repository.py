@@ -16,7 +16,7 @@ _BOARD_SELECT = """
 SELECT b.id, b.category_id AS categoryId, bc.name AS category, b.title, b.summary, b.content,
        b.created_at AS createdAt, b.updated_at AS updatedAt,
        b.view_count AS viewCount, b.thumbnail_url AS thumbnailUrl,
-       u.id AS authorId, u.name AS authorName,
+       u.id AS authorId, u.name AS authorName, u.profile_file_id AS authorProfileFileId,
        COALESCE(
            (SELECT JSON_ARRAYAGG(t.name)
             FROM board_tags bt
@@ -39,7 +39,11 @@ def _to_board(row: dict[str, Any]) -> dict[str, Any]:
     row["author"] = {
         "id": row.pop("authorId"),
         "name": row.pop("authorName"),
+        "profileImageUrl": None,
     }
+    profile_file_id = row.pop("authorProfileFileId", None)
+    if profile_file_id:
+        row["author"]["profileImageUrl"] = f"/api/boards/authors/{row['author']['id']}/profile-image"
     return row
 
 

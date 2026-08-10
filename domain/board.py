@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 class BoardAuthor(BaseModel):
     id: int
     name: str
+    profileImageUrl: str | None = None
 
 
 class Board(BaseModel):

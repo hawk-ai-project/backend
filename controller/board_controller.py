@@ -1,4 +1,5 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 
 from controller.auth_controller import current_auth
 from domain.board import (
@@ -10,10 +11,55 @@ from domain.board import (
     BoardPage,
     BoardUpdate,
 )
-from service import board_service
+from domain.file import BoardImageUploadResponse
+from service import board_service, file_service
 
 
 router = APIRouter(prefix="/api/boards", tags=["게시판"])
+
+
+@router.post("/images", response_model=BoardImageUploadResponse, status_code=status.HTTP_201_CREATED)
+def upload_board_image(file: UploadFile = File(...), auth=Depends(current_auth)):
+    try:
+        return file_service.upload_board_image(file, auth[0]["id"])
+    finally:
+        file.file.close()
+
+
+@router.get("/images/{object_key:path}")
+def read_board_image(object_key: str):
+    stored_file, content_type = file_service.open_board_image(object_key)
+
+    def stream():
+        try:
+            yield from stored_file.stream(32 * 1024)
+        finally:
+            stored_file.close()
+            stored_file.release_conn()
+
+    return StreamingResponse(
+        stream(),
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+@router.get("/authors/{user_id}/profile-image")
+def read_board_author_profile_image(user_id: int):
+    stored_file, content_type = file_service.open_public_profile_image(user_id)
+
+    def stream():
+        try:
+            yield from stored_file.stream(32 * 1024)
+        finally:
+            stored_file.close()
+            stored_file.release_conn()
+
+    return StreamingResponse(
+        stream(),
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 @router.post(

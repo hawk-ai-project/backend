@@ -16,6 +16,8 @@ from repository import file_repository
 _client: Minio | None = None
 PROFILE_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+BOARD_IMAGE_TYPES = PROFILE_IMAGE_TYPES
+BOARD_IMAGE_MAX_BYTES = 10 * 1024 * 1024
 
 
 def get_client() -> Minio:
@@ -38,13 +40,13 @@ def _file_size(file: UploadFile) -> int:
     return size
 
 
-def _object_key(user_id: int, filename: str | None) -> str:
+def _object_key(user_id: int, filename: str | None, root: str = "users") -> str:
     # Only retain a short extension. The original filename never becomes a path.
     suffix = Path(filename or "").suffix.lower()
     if len(suffix) > 16 or not suffix.replace(".", "").isalnum():
         suffix = ""
     today = datetime.now(timezone.utc).strftime("%Y/%m/%d")
-    return f"users/{user_id}/{today}/{uuid4().hex}{suffix}"
+    return f"{root}/{user_id}/{today}/{uuid4().hex}{suffix}"
 
 
 def _owned_file(object_key: str, user_id: int) -> dict:
@@ -54,7 +56,7 @@ def _owned_file(object_key: str, user_id: int) -> dict:
     return stored
 
 
-def upload(file: UploadFile, user_id: int) -> dict:
+def upload(file: UploadFile, user_id: int, *, object_root: str = "users") -> dict:
     if not file.filename:
         raise HTTPException(status_code=422, detail="A filename is required.")
 
@@ -65,7 +67,7 @@ def upload(file: UploadFile, user_id: int) -> dict:
         limit_mb = settings.max_upload_size_bytes // (1024 * 1024)
         raise HTTPException(status_code=413, detail=f"File size exceeds {limit_mb} MB.")
 
-    object_key = _object_key(user_id, file.filename)
+    object_key = _object_key(user_id, file.filename, object_root)
     content_type = file.content_type or "application/octet-stream"
     file.file.seek(0)
     try:
@@ -117,6 +119,45 @@ def upload_profile_image(file: UploadFile, user_id: int) -> dict:
     if _file_size(file) > PROFILE_IMAGE_MAX_BYTES:
         raise HTTPException(status_code=413, detail="Profile image exceeds 5 MB.")
     return upload(file, user_id)
+
+
+def upload_board_image(file: UploadFile, user_id: int) -> dict:
+    if file.content_type not in BOARD_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail="Board images must be JPEG, PNG, WebP, or GIF.",
+        )
+    if _file_size(file) > BOARD_IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Board image exceeds 10 MB.")
+    uploaded = upload(file, user_id, object_root="board-images")
+    uploaded["imageUrl"] = f"/api/boards/images/{quote(uploaded['objectKey'], safe='/')}"
+    return uploaded
+
+
+def open_board_image(object_key: str):
+    if not object_key.startswith("board-images/"):
+        raise HTTPException(status_code=404, detail="Board image not found.")
+    stored = file_repository.find_active(object_key)
+    if stored is None or stored["mime_type"] not in BOARD_IMAGE_TYPES:
+        raise HTTPException(status_code=404, detail="Board image not found.")
+    try:
+        return get_client().get_object(stored["bucket_name"], object_key), stored["mime_type"]
+    except S3Error as exc:
+        if exc.code in {"NoSuchKey", "NoSuchObject"}:
+            raise HTTPException(status_code=404, detail="Board image not found.") from exc
+        raise HTTPException(status_code=502, detail="Board image could not be loaded.") from exc
+
+
+def open_public_profile_image(user_id: int):
+    stored = file_repository.find_profile_image_by_user_id(user_id)
+    if stored is None or stored["mime_type"] not in PROFILE_IMAGE_TYPES:
+        raise HTTPException(status_code=404, detail="Profile image not found.")
+    try:
+        return get_client().get_object(stored["bucket_name"], stored["object_key"]), stored["mime_type"]
+    except S3Error as exc:
+        if exc.code in {"NoSuchKey", "NoSuchObject"}:
+            raise HTTPException(status_code=404, detail="Profile image not found.") from exc
+        raise HTTPException(status_code=502, detail="Profile image could not be loaded.") from exc
 
 
 def open_by_id(file_id: int, user_id: int):
