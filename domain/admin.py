@@ -2,6 +2,8 @@
 
 from datetime import datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -42,3 +44,32 @@ class AdminRole(BaseModel):
 
 class RoleUpdateRequest(BaseModel):
     roleCode: str = Field(min_length=1, max_length=30, pattern=r"^[A-Z_]+$")
+
+
+AdminBoardStatus = Literal["DRAFT", "PUBLISHED", "HIDDEN"]
+
+
+class AdminBoard(BaseModel):
+    id: int
+    title: str
+    category: str
+    authorId: int
+    authorName: str
+    status: AdminBoardStatus
+    isNotice: bool
+    viewCount: int
+    publishedAt: datetime | None
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class AdminBoardPage(BaseModel):
+    items: list[AdminBoard]
+    page: int
+    pageSize: int
+    totalItems: int
+    totalPages: int
+
+
+class BoardStatusUpdateRequest(BaseModel):
+    status: AdminBoardStatus

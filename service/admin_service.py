@@ -83,3 +83,25 @@ def update_service_settings(admin: dict, payload):
         "session_expire_minutes": payload.sessionExpireMinutes,
     }, admin["id"])
     return get_service_settings()
+
+
+def get_boards(page: int, page_size: int, keyword: str | None, status: str | None):
+    items, total = admin_repository.find_boards(page, page_size, keyword, status)
+    return {
+        "items": items,
+        "page": page,
+        "pageSize": page_size,
+        "totalItems": total,
+        "totalPages": math.ceil(total / page_size) if total else 0,
+    }
+
+
+def change_board_status(board_id: int, status: str):
+    if not admin_repository.update_board_status(board_id, status):
+        raise AuthError("게시글을 찾을 수 없습니다.", 404)
+    return {"id": board_id, "status": status}
+
+
+def delete_board(board_id: int) -> None:
+    if not admin_repository.soft_delete_board(board_id):
+        raise AuthError("게시글을 찾을 수 없습니다.", 404)

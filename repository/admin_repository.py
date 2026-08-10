@@ -86,3 +86,71 @@ def update_user_role(user_id: int, role_code: str) -> bool:
         (role_code, user_id),
     )
     return affected > 0
+
+
+_ADMIN_BOARD_SELECT = """
+SELECT b.id, b.title, bc.name AS category,
+       u.id AS authorId, u.name AS authorName,
+       b.status, b.is_notice AS isNotice, b.view_count AS viewCount,
+       b.published_at AS publishedAt, b.created_at AS createdAt,
+       b.updated_at AS updatedAt
+FROM boards b
+JOIN board_categories bc ON bc.id = b.category_id
+JOIN users u ON u.id = b.author_id
+"""
+
+
+def find_boards(
+    page: int,
+    page_size: int,
+    keyword: str | None,
+    status: str | None,
+) -> tuple[list[dict[str, Any]], int]:
+    where = "WHERE b.deleted_at IS NULL"
+    params: list[Any] = []
+    if keyword:
+        where += " AND (b.title LIKE %s OR u.name LIKE %s)"
+        pattern = f"%{keyword}%"
+        params.extend((pattern, pattern))
+    if status:
+        where += " AND b.status = %s"
+        params.append(status)
+
+    count_row = fetch_query(
+        f"""SELECT COUNT(*) AS total FROM boards b
+        JOIN users u ON u.id = b.author_id {where}""",
+        tuple(params),
+        one=True,
+    )
+    rows = fetch_query(
+        f"""{_ADMIN_BOARD_SELECT} {where}
+        ORDER BY b.created_at DESC, b.id DESC LIMIT %s OFFSET %s""",
+        (*params, page_size, (page - 1) * page_size),
+    )
+    total = int(count_row["total"]) if isinstance(count_row, dict) else 0
+    return (rows if isinstance(rows, list) else []), total
+
+
+def update_board_status(board_id: int, status: str) -> bool:
+    affected = execute_query(
+        """UPDATE boards
+        SET status = %s,
+            published_at = CASE
+                WHEN %s = 'PUBLISHED' THEN COALESCE(published_at, UTC_TIMESTAMP(6))
+                ELSE published_at
+            END,
+            updated_at = UTC_TIMESTAMP(6)
+        WHERE id = %s AND deleted_at IS NULL""",
+        (status, status, board_id),
+    )
+    return affected > 0
+
+
+def soft_delete_board(board_id: int) -> bool:
+    affected = execute_query(
+        """UPDATE boards
+        SET deleted_at = UTC_TIMESTAMP(6), updated_at = UTC_TIMESTAMP(6)
+        WHERE id = %s AND deleted_at IS NULL""",
+        (board_id,),
+    )
+    return affected > 0

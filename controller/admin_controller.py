@@ -1,10 +1,13 @@
 """Administrator-only HTTP endpoints."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import StreamingResponse
 
 from controller.auth_controller import current_auth
-from domain.admin import AdminRole, AdminUserPage, DashboardStats, RoleUpdateRequest
+from domain.admin import (
+    AdminBoardPage, AdminRole, AdminUserPage, BoardStatusUpdateRequest,
+    DashboardStats, RoleUpdateRequest,
+)
 from domain.auth import UserResponse
 from domain.settings import ServiceSettings
 from service import admin_service
@@ -21,6 +24,33 @@ def current_admin(auth=Depends(current_auth)):
 def dashboard(_admin=Depends(current_admin)):
     return admin_service.get_dashboard()
 
+
+@router.get("/boards", response_model=AdminBoardPage)
+def boards(
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+    keyword: str | None = Query(default=None, max_length=100),
+    statusFilter: str | None = Query(default=None, alias="status", pattern="^(DRAFT|PUBLISHED|HIDDEN)$"),
+    _admin=Depends(current_admin),
+):
+    return admin_service.get_boards(
+        page, pageSize, keyword.strip() if keyword else None, statusFilter
+    )
+
+
+@router.patch("/boards/{board_id}/status")
+def update_board_status(
+    board_id: int,
+    payload: BoardStatusUpdateRequest,
+    _admin=Depends(current_admin),
+):
+    return admin_service.change_board_status(board_id, payload.status)
+
+
+@router.delete("/boards/{board_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_board(board_id: int, _admin=Depends(current_admin)):
+    admin_service.delete_board(board_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @router.get("/users", response_model=AdminUserPage)
 def users(
