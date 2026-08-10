@@ -41,8 +41,8 @@ def _ensure_can_manage(board_id: int, user: dict) -> None:
     owner_id = board_repository.find_author_id(board_id)
     if owner_id is None:
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
-    if owner_id != user["id"] and user.get("role") != "ADMIN":
-        raise HTTPException(status_code=403, detail="게시글을 변경할 권한이 없습니다.")
+    if owner_id != user["id"]:
+        raise HTTPException(status_code=403, detail="작성자만 게시글을 변경할 수 있습니다.")
 
 
 def create_board(payload: BoardCreate, user: dict) -> dict:
