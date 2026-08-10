@@ -31,6 +31,15 @@ def find_user_by_id(user_id: int) -> dict[str, Any] | None:
     return row if isinstance(row, dict) else None
 
 
+def find_user_credentials_by_id(user_id: int) -> dict[str, Any] | None:
+    row = fetch_query(
+        "SELECT id, email, password_hash FROM users WHERE id = %s AND deleted_at IS NULL",
+        (user_id,),
+        one=True,
+    )
+    return row if isinstance(row, dict) else None
+
+
 def create_user(name: str, email: str, password_hash: str) -> int:
     return execute_query(
         """INSERT INTO users (role_id, email, password_hash, name, status)
@@ -70,3 +79,21 @@ def revoke_session(session_id: str) -> None:
         "UPDATE auth_sessions SET revoked_at = UTC_TIMESTAMP(6) WHERE id = %s AND revoked_at IS NULL",
         (session_id,),
     )
+
+
+def update_profile(
+    user_id: int,
+    name: str,
+    email: str,
+    password_hash: str | None = None,
+) -> None:
+    if password_hash:
+        execute_query(
+            "UPDATE users SET name = %s, email = %s, password_hash = %s WHERE id = %s AND deleted_at IS NULL",
+            (name, email, password_hash, user_id),
+        )
+    else:
+        execute_query(
+            "UPDATE users SET name = %s, email = %s WHERE id = %s AND deleted_at IS NULL",
+            (name, email, user_id),
+        )

@@ -123,3 +123,38 @@ def authenticate(token: str) -> tuple[dict[str, Any], dict[str, Any]]:
     if not user or user["status"] != "ACTIVE":
         raise AuthError("사용할 수 없는 계정입니다.", 403)
     return _public_user(user), claims
+
+
+def update_profile(
+    user_id: int,
+    name: str,
+    email: str,
+    current_password: str | None,
+    new_password: str | None,
+) -> dict[str, Any]:
+    clean_name = name.strip()
+    normalized_email = email.strip().lower()
+    if not clean_name:
+        raise AuthError("이름을 입력해 주세요.", 422)
+
+    existing_email_user = auth_repository.find_user_by_email(normalized_email)
+    if existing_email_user and existing_email_user["id"] != user_id:
+        raise AuthError("이미 사용 중인 이메일입니다.", 409)
+
+    password_hash = None
+    if new_password:
+        current_user = auth_repository.find_user_credentials_by_id(user_id)
+        if not current_password or not current_user or not _verify_password(current_password, current_user["password_hash"]):
+            raise AuthError("현재 비밀번호가 올바르지 않습니다.", 400)
+        password_hash = _hash_password(new_password)
+
+    try:
+        auth_repository.update_profile(user_id, clean_name, normalized_email, password_hash)
+    except Exception as exc:
+        if "duplicate" in str(exc).lower():
+            raise AuthError("이미 사용 중인 이메일입니다.", 409) from None
+        raise
+    updated = auth_repository.find_user_by_id(user_id)
+    if not updated:
+        raise AuthError("사용자 정보를 찾을 수 없습니다.", 404)
+    return _public_user(updated)

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import JSONResponse
 
-from domain.auth import AuthResponse, LoginRequest, MessageResponse, SignupRequest, UserResponse
+from domain.auth import AuthResponse, LoginRequest, MessageResponse, ProfileUpdateRequest, SignupRequest, UserResponse
 from service import auth_service
 
 
@@ -33,6 +33,14 @@ def login(payload: LoginRequest):
 @router.get("/me", response_model=UserResponse)
 def me(auth=Depends(current_auth)):
     return auth[0]
+
+
+@router.patch("/profile", response_model=UserResponse)
+def update_profile(payload: ProfileUpdateRequest, auth=Depends(current_auth)):
+    return auth_service.update_profile(
+        auth[0]["id"], payload.name, payload.email,
+        payload.currentPassword, payload.newPassword,
+    )
 
 
 @router.post("/logout", response_model=MessageResponse)
