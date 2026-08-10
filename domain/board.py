@@ -1,6 +1,7 @@
 """게시판 도메인 모델."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -88,3 +89,45 @@ class BoardUpdate(BaseModel):
     @classmethod
     def validate_tags(cls, values: list[str] | None) -> list[str] | None:
         return BoardCreate.validate_tags(values) if values is not None else None
+
+
+class BoardAIGenerateRequest(BaseModel):
+    location: str = Field(min_length=1)
+    wasteSummary: str = Field(min_length=1)
+    priority: str | None = None
+    category: str | None = None
+    notes: str | None = None
+
+    @field_validator("location", "wasteSummary")
+    @classmethod
+    def require_ai_input(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("빈 값은 입력할 수 없습니다.")
+        return value.strip()
+
+    @field_validator("priority", "category", "notes")
+    @classmethod
+    def normalize_ai_optional_input(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+BoardAIJobStatus = Literal["PENDING", "RUNNING", "COMPLETED", "FAILED"]
+
+
+class BoardAIJobAccepted(BaseModel):
+    jobId: str
+    status: BoardAIJobStatus
+
+
+class BoardAIJob(BaseModel):
+    jobId: str
+    status: BoardAIJobStatus
+    isRead: bool
+    createdAt: datetime
+    completedAt: datetime | None = None
+    title: str | None = None
+    summary: str | None = None
+    content: str | None = None
+    error: str | None = None

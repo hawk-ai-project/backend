@@ -1,9 +1,17 @@
 import math
+from datetime import datetime, timezone
+from threading import Lock
+from uuid import uuid4
 
 from fastapi import HTTPException
 
-from domain.board import BoardCreate, BoardUpdate
+from AI.LLM import board_generator
+from domain.board import BoardAIGenerateRequest, BoardCreate, BoardUpdate
 from repository import board_repository
+
+
+_ai_jobs: dict[str, dict] = {}
+_ai_jobs_lock = Lock()
 
 
 def get_board_list(
@@ -70,3 +78,107 @@ def delete_board(board_id: int, user: dict) -> None:
     _ensure_can_manage(board_id, user)
     if not board_repository.soft_delete(board_id):
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
+
+
+def generate_board_draft(payload: BoardAIGenerateRequest) -> dict[str, str]:
+    try:
+        return board_generator.generate_board_post(
+            location=payload.location,
+            waste_summary=payload.wasteSummary,
+            priority=payload.priority,
+            category=payload.category,
+            notes=payload.notes,
+        )
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except (ImportError, RuntimeError, OSError) as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI 모델을 사용할 수 없습니다: {error}",
+        ) from error
+    except ValueError as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI 생성 결과를 처리할 수 없습니다: {error}",
+        ) from error
+
+
+def create_board_ai_job(payload: BoardAIGenerateRequest, user_id: int) -> dict:
+    job_id = str(uuid4())
+    job = {
+        "jobId": job_id,
+        "userId": user_id,
+        "status": "PENDING",
+        "isRead": False,
+        "createdAt": datetime.now(timezone.utc),
+        "completedAt": None,
+        "title": None,
+        "summary": None,
+        "content": None,
+        "error": None,
+    }
+    with _ai_jobs_lock:
+        _ai_jobs[job_id] = job
+    return {"jobId": job_id, "status": "PENDING"}
+
+
+def run_board_ai_job(job_id: str, payload: BoardAIGenerateRequest) -> None:
+    with _ai_jobs_lock:
+        job = _ai_jobs.get(job_id)
+        if job is None:
+            return
+        job["status"] = "RUNNING"
+
+    try:
+        result = generate_board_draft(payload)
+        with _ai_jobs_lock:
+            job = _ai_jobs.get(job_id)
+            if job is not None:
+                job.update(result)
+                job["status"] = "COMPLETED"
+                job["completedAt"] = datetime.now(timezone.utc)
+    except HTTPException as error:
+        with _ai_jobs_lock:
+            job = _ai_jobs.get(job_id)
+            if job is not None:
+                job["status"] = "FAILED"
+                job["error"] = str(error.detail)
+                job["completedAt"] = datetime.now(timezone.utc)
+    except Exception as error:
+        with _ai_jobs_lock:
+            job = _ai_jobs.get(job_id)
+            if job is not None:
+                job["status"] = "FAILED"
+                job["error"] = f"AI 글 생성 중 오류가 발생했습니다: {error}"
+                job["completedAt"] = datetime.now(timezone.utc)
+
+
+def _public_ai_job(job: dict) -> dict:
+    return {key: value for key, value in job.items() if key != "userId"}
+
+
+def list_board_ai_jobs(user_id: int) -> list[dict]:
+    with _ai_jobs_lock:
+        jobs = [
+            _public_ai_job(job.copy())
+            for job in _ai_jobs.values()
+            if job["userId"] == user_id
+        ]
+    return sorted(jobs, key=lambda job: job["createdAt"], reverse=True)
+
+
+def get_board_ai_job(job_id: str, user_id: int) -> dict:
+    with _ai_jobs_lock:
+        job = _ai_jobs.get(job_id)
+        if job is None or job["userId"] != user_id:
+            raise HTTPException(status_code=404, detail="AI 생성 작업을 찾을 수 없습니다.")
+        return _public_ai_job(job.copy())
+
+
+def read_board_ai_job(job_id: str, user_id: int) -> dict:
+    with _ai_jobs_lock:
+        job = _ai_jobs.get(job_id)
+        if job is None or job["userId"] != user_id:
+            raise HTTPException(status_code=404, detail="AI 생성 작업을 찾을 수 없습니다.")
+        job["isRead"] = True
+        return _public_ai_job(job.copy())

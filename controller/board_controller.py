@@ -1,11 +1,49 @@
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
 
 from controller.auth_controller import current_auth
-from domain.board import Board, BoardCreate, BoardPage, BoardUpdate
+from domain.board import (
+    Board,
+    BoardAIGenerateRequest,
+    BoardAIJob,
+    BoardAIJobAccepted,
+    BoardCreate,
+    BoardPage,
+    BoardUpdate,
+)
 from service import board_service
 
 
 router = APIRouter(prefix="/api/boards", tags=["게시판"])
+
+
+@router.post(
+    "/ai/generate",
+    response_model=BoardAIJobAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def generate_board_draft(
+    payload: BoardAIGenerateRequest,
+    background_tasks: BackgroundTasks,
+    auth=Depends(current_auth),
+):
+    job = board_service.create_board_ai_job(payload, auth[0]["id"])
+    background_tasks.add_task(board_service.run_board_ai_job, job["jobId"], payload)
+    return job
+
+
+@router.get("/ai/jobs", response_model=list[BoardAIJob])
+def get_board_ai_jobs(auth=Depends(current_auth)):
+    return board_service.list_board_ai_jobs(auth[0]["id"])
+
+
+@router.get("/ai/generate/{job_id}", response_model=BoardAIJob)
+def get_board_ai_job(job_id: str, auth=Depends(current_auth)):
+    return board_service.get_board_ai_job(job_id, auth[0]["id"])
+
+
+@router.patch("/ai/generate/{job_id}/read", response_model=BoardAIJob)
+def read_board_ai_job(job_id: str, auth=Depends(current_auth)):
+    return board_service.read_board_ai_job(job_id, auth[0]["id"])
 
 
 @router.get("", response_model=BoardPage)
