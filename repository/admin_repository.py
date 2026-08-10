@@ -1,0 +1,59 @@
+"""Read-only database queries used by the administrator console."""
+
+from typing import Any
+
+from common.db import fetch_query
+
+
+_USER_SELECT = """
+SELECT u.id, u.name, u.email, r.code AS role, u.status,
+       u.last_login_at AS lastLoginAt, u.created_at AS createdAt
+FROM users u
+JOIN roles r ON r.id = u.role_id
+"""
+
+
+def find_users(page: int, page_size: int, keyword: str | None) -> tuple[list[dict[str, Any]], int]:
+    where = "WHERE u.deleted_at IS NULL"
+    params: list[Any] = []
+    if keyword:
+        where += " AND (u.name LIKE %s OR u.email LIKE %s)"
+        pattern = f"%{keyword}%"
+        params.extend((pattern, pattern))
+
+    count_row = fetch_query(
+        f"SELECT COUNT(*) AS total FROM users u {where}", tuple(params), one=True
+    )
+    rows = fetch_query(
+        f"""{_USER_SELECT} {where}
+        ORDER BY u.created_at DESC, u.id DESC LIMIT %s OFFSET %s""",
+        (*params, page_size, (page - 1) * page_size),
+    )
+    total = int(count_row["total"]) if isinstance(count_row, dict) else 0
+    return (rows if isinstance(rows, list) else []), total
+
+
+def dashboard_stats() -> dict[str, Any]:
+    row = fetch_query(
+        """SELECT
+          (SELECT COUNT(*) FROM users WHERE deleted_at IS NULL) AS totalUsers,
+          (SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND status = 'ACTIVE') AS activeUsers,
+          (SELECT COUNT(*) FROM users u JOIN roles r ON r.id = u.role_id
+             WHERE u.deleted_at IS NULL AND r.code = 'ADMIN') AS adminUsers,
+          (SELECT COUNT(*) FROM users WHERE deleted_at IS NULL
+             AND created_at >= DATE_FORMAT(UTC_TIMESTAMP(), '%%Y-%%m-01')) AS newUsersThisMonth,
+          (SELECT COUNT(*) FROM boards WHERE deleted_at IS NULL AND status = 'PUBLISHED') AS publishedBoards,
+          (SELECT COUNT(*) FROM inspections WHERE deleted_at IS NULL) AS totalInspections""",
+        one=True,
+    )
+    return row if isinstance(row, dict) else {}
+
+
+def recent_users(limit: int = 5) -> list[dict[str, Any]]:
+    rows = fetch_query(
+        f"""{_USER_SELECT}
+        WHERE u.deleted_at IS NULL
+        ORDER BY u.created_at DESC, u.id DESC LIMIT %s""",
+        (limit,),
+    )
+    return rows if isinstance(rows, list) else []
