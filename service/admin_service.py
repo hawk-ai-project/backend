@@ -33,6 +33,19 @@ def get_roles():
     return admin_repository.find_roles()
 
 
+def get_user_profile_image(user_id: int):
+    from repository import auth_repository
+    from service import file_service
+
+    user = auth_repository.find_user_by_id(user_id)
+    if not user:
+        raise AuthError("User not found.", 404)
+    file_id = user.get("profileFileId")
+    if not file_id:
+        raise AuthError("Profile image not found.", 404)
+    return file_service.open_by_id(file_id, user_id)
+
+
 def change_user_role(admin: dict, user_id: int, role_code: str):
     if admin["id"] == user_id:
         raise AuthError("현재 로그인한 계정의 권한은 직접 변경할 수 없습니다.", 400)

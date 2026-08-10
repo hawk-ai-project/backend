@@ -9,6 +9,7 @@ from common.db import execute_query, fetch_query
 def find_user_by_email(email: str) -> dict[str, Any] | None:
     row = fetch_query(
         """SELECT u.id, u.name, u.email, u.password_hash, u.status,
+                  u.profile_file_id AS profileFileId,
                   r.code AS role
            FROM users u
            JOIN roles r ON r.id = u.role_id
@@ -21,7 +22,8 @@ def find_user_by_email(email: str) -> dict[str, Any] | None:
 
 def find_user_by_id(user_id: int) -> dict[str, Any] | None:
     row = fetch_query(
-        """SELECT u.id, u.name, u.email, u.status, r.code AS role
+        """SELECT u.id, u.name, u.email, u.status,
+                  u.profile_file_id AS profileFileId, r.code AS role
            FROM users u
            JOIN roles r ON r.id = u.role_id
            WHERE u.id = %s AND u.deleted_at IS NULL""",
@@ -97,3 +99,10 @@ def update_profile(
             "UPDATE users SET name = %s, email = %s WHERE id = %s AND deleted_at IS NULL",
             (name, email, user_id),
         )
+
+
+def set_profile_file(user_id: int, file_id: int | None) -> None:
+    execute_query(
+        "UPDATE users SET profile_file_id = %s WHERE id = %s AND deleted_at IS NULL",
+        (file_id, user_id),
+    )

@@ -99,6 +99,13 @@ mysql -u USER -p DATABASE_NAME < backend/sql/files.sql
 
 New databases receive the same `files` table from `backend/sql/schema.sql`.
 
+To enable profile images on an existing database, apply the user reference after
+the files table:
+
+```bash
+mysql -u USER -p DATABASE_NAME < backend/sql/profile_images.sql
+```
+
 Copy the MinIO values from `.env.example` into `.env`. The backend access key
 and secret must match `MINIO_APP_ACCESS_KEY` and `MINIO_APP_SECRET_KEY` in the
 MinIO environment file.

@@ -11,6 +11,7 @@ class AdminUser(BaseModel):
     email: str
     role: str
     status: str
+    profileFileId: int | None = None
     lastLoginAt: datetime | None
     createdAt: datetime
 

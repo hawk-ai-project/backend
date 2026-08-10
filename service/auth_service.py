@@ -10,8 +10,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from config import settings
-from repository import auth_repository
+from repository import auth_repository, file_repository
 from repository import settings_repository
+from service import file_service
 
 
 class AuthError(Exception):
@@ -80,7 +81,12 @@ def decode_token(token: str) -> dict[str, Any]:
 
 
 def _public_user(user: dict[str, Any]) -> dict[str, Any]:
-    return {key: user[key] for key in ("id", "name", "email", "role")}
+    result = {key: user[key] for key in ("id", "name", "email", "role")}
+    result["profileFileId"] = user.get("profileFileId")
+    result["profileImageUrl"] = (
+        "/api/auth/profile/image" if user.get("profileFileId") else None
+    )
+    return result
 
 
 def signup(name: str, email: str, password: str) -> dict[str, Any]:
@@ -163,4 +169,43 @@ def update_profile(
     updated = auth_repository.find_user_by_id(user_id)
     if not updated:
         raise AuthError("사용자 정보를 찾을 수 없습니다.", 404)
+    return _public_user(updated)
+
+
+def update_profile_image(file, user: dict[str, Any]) -> dict[str, Any]:
+    uploaded = file_service.upload_profile_image(file, user["id"])
+    previous_file_id = user.get("profileFileId")
+    try:
+        auth_repository.set_profile_file(user["id"], uploaded["fileId"])
+    except Exception:
+        file_service.delete(uploaded["objectKey"], user["id"])
+        raise
+
+    if previous_file_id:
+        previous = file_repository.find_by_id_owned(previous_file_id, user["id"])
+        if previous:
+            try:
+                file_service.delete(previous["object_key"], user["id"])
+            except Exception:
+                pass
+
+    updated = auth_repository.find_user_by_id(user["id"])
+    if not updated:
+        raise AuthError("User not found.", 404)
+    return _public_user(updated)
+
+
+def remove_profile_image(user: dict[str, Any]) -> dict[str, Any]:
+    profile_file_id = user.get("profileFileId")
+    if profile_file_id:
+        stored = file_repository.find_by_id_owned(profile_file_id, user["id"])
+        auth_repository.set_profile_file(user["id"], None)
+        if stored:
+            try:
+                file_service.delete(stored["object_key"], user["id"])
+            except Exception:
+                pass
+    updated = auth_repository.find_user_by_id(user["id"])
+    if not updated:
+        raise AuthError("User not found.", 404)
     return _public_user(updated)

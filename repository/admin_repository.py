@@ -7,6 +7,7 @@ from common.db import execute_query, fetch_query
 
 _USER_SELECT = """
 SELECT u.id, u.name, u.email, r.code AS role, u.status,
+       u.profile_file_id AS profileFileId,
        u.last_login_at AS lastLoginAt, u.created_at AS createdAt
 FROM users u
 JOIN roles r ON r.id = u.role_id

@@ -26,6 +26,8 @@ class UserResponse(BaseModel):
     name: str
     email: str
     role: str
+    profileFileId: int | None = None
+    profileImageUrl: str | None = None
 
 
 class AuthResponse(BaseModel):

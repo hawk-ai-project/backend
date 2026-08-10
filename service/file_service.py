@@ -14,6 +14,8 @@ from repository import file_repository
 
 
 _client: Minio | None = None
+PROFILE_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024
 
 
 def get_client() -> Minio:
@@ -104,6 +106,29 @@ def upload(file: UploadFile, user_id: int) -> dict:
         "size": size,
         "downloadUrl": f"/api/files/{encoded_key}",
     }
+
+
+def upload_profile_image(file: UploadFile, user_id: int) -> dict:
+    if file.content_type not in PROFILE_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail="Profile images must be JPEG, PNG, WebP, or GIF.",
+        )
+    if _file_size(file) > PROFILE_IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Profile image exceeds 5 MB.")
+    return upload(file, user_id)
+
+
+def open_by_id(file_id: int, user_id: int):
+    stored = file_repository.find_by_id_owned(file_id, user_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="Profile image not found.")
+    try:
+        return get_client().get_object(stored["bucket_name"], stored["object_key"])
+    except S3Error as exc:
+        if exc.code in {"NoSuchKey", "NoSuchObject"}:
+            raise HTTPException(status_code=404, detail="Profile image not found.") from exc
+        raise HTTPException(status_code=502, detail="File storage download failed.") from exc
 
 
 def open_download(object_key: str, user_id: int):

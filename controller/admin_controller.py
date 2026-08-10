@@ -1,6 +1,7 @@
 """Administrator-only HTTP endpoints."""
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 
 from controller.auth_controller import current_auth
 from domain.admin import AdminRole, AdminUserPage, DashboardStats, RoleUpdateRequest
@@ -34,6 +35,21 @@ def users(
 @router.get("/roles", response_model=list[AdminRole])
 def roles(_admin=Depends(current_admin)):
     return admin_service.get_roles()
+
+
+@router.get("/users/{user_id}/profile-image")
+def user_profile_image(user_id: int, _admin=Depends(current_admin)):
+    stored_file = admin_service.get_user_profile_image(user_id)
+
+    def stream():
+        try:
+            yield from stored_file.stream(32 * 1024)
+        finally:
+            stored_file.close()
+            stored_file.release_conn()
+
+    content_type = stored_file.headers.get("Content-Type", "application/octet-stream")
+    return StreamingResponse(stream(), media_type=content_type)
 
 
 @router.patch("/users/{user_id}/role", response_model=UserResponse)

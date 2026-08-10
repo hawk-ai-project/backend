@@ -1,10 +1,11 @@
 """HTTP endpoints for signup, login, session lookup, and logout."""
 
-from fastapi import APIRouter, Depends, Header
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, File, Header, Response, UploadFile, status
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from domain.auth import AuthResponse, LoginRequest, MessageResponse, ProfileUpdateRequest, SignupRequest, UserResponse
 from service import auth_service
+from service import file_service
 
 
 router = APIRouter(prefix="/api/auth", tags=["인증"])
@@ -41,6 +42,40 @@ def update_profile(payload: ProfileUpdateRequest, auth=Depends(current_auth)):
         auth[0]["id"], payload.name, payload.email,
         payload.currentPassword, payload.newPassword,
     )
+
+
+@router.patch("/profile/image", response_model=UserResponse)
+def update_profile_image(
+    file: UploadFile = File(...),
+    auth=Depends(current_auth),
+):
+    try:
+        return auth_service.update_profile_image(file, auth[0])
+    finally:
+        file.file.close()
+
+
+@router.get("/profile/image")
+def get_profile_image(auth=Depends(current_auth)):
+    file_id = auth[0].get("profileFileId")
+    if not file_id:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    stored_file = file_service.open_by_id(file_id, auth[0]["id"])
+
+    def stream():
+        try:
+            yield from stored_file.stream(32 * 1024)
+        finally:
+            stored_file.close()
+            stored_file.release_conn()
+
+    content_type = stored_file.headers.get("Content-Type", "application/octet-stream")
+    return StreamingResponse(stream(), media_type=content_type)
+
+
+@router.delete("/profile/image", response_model=UserResponse)
+def delete_profile_image(auth=Depends(current_auth)):
+    return auth_service.remove_profile_image(auth[0])
 
 
 @router.post("/logout", response_model=MessageResponse)

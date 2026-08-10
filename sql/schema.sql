@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '사용자 생성 일시',
     updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '사용자 정보 수정 일시',
     deleted_at      DATETIME(6) NULL COMMENT '소프트 삭제 일시',
+    profile_file_id BIGINT UNSIGNED NULL COMMENT 'Current profile image file identifier',
     PRIMARY KEY (id),
     UNIQUE KEY uq_users_email (email),
     KEY ix_users_role_status (role_id, status),
@@ -81,6 +82,11 @@ CREATE TABLE IF NOT EXISTS files (
     CONSTRAINT ck_files_byte_size CHECK (byte_size > 0),
     CONSTRAINT fk_files_uploaded_by FOREIGN KEY (uploaded_by) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='MinIO file metadata';
+
+ALTER TABLE users
+    ADD KEY ix_users_profile_file (profile_file_id),
+    ADD CONSTRAINT fk_users_profile_file
+        FOREIGN KEY (profile_file_id) REFERENCES files (id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS menu (
     id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '메뉴 고유 식별자',
