@@ -88,3 +88,30 @@ uvicorn main:app --reload
 
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - ReDoc: `http://127.0.0.1:8000/redoc`
+
+## MinIO file API
+
+For an existing database, create the metadata table before starting the API:
+
+```bash
+mysql -u USER -p DATABASE_NAME < backend/sql/files.sql
+```
+
+New databases receive the same `files` table from `backend/sql/schema.sql`.
+
+Copy the MinIO values from `.env.example` into `.env`. The backend access key
+and secret must match `MINIO_APP_ACCESS_KEY` and `MINIO_APP_SECRET_KEY` in the
+MinIO environment file.
+
+Upload a file as authenticated `multipart/form-data`:
+
+```bash
+curl -X POST http://localhost:8000/api/files \
+  -H "Authorization: Bearer ACCESS_TOKEN" \
+  -F "file=@sample.jpg"
+```
+
+Send the same authorization header to the returned `downloadUrl` to download
+the file. An object is isolated by user ID, so only its uploader can download
+or delete it. The default limit is 20 MB and can be changed with
+`MAX_UPLOAD_SIZE_MB`.
