@@ -11,6 +11,7 @@ from typing import Any
 
 from config import settings
 from repository import auth_repository
+from repository import settings_repository
 
 
 class AuthError(Exception):
@@ -83,6 +84,8 @@ def _public_user(user: dict[str, Any]) -> dict[str, Any]:
 
 
 def signup(name: str, email: str, password: str) -> dict[str, Any]:
+    if settings_repository.get_value("signup_enabled", "true") != "true":
+        raise AuthError("현재 신규 회원가입이 중지되어 있습니다.", 403)
     normalized_email = email.strip().lower()
     clean_name = name.strip()
     if not clean_name:
@@ -108,7 +111,10 @@ def login(email: str, password: str) -> dict[str, Any]:
     if user["status"] != "ACTIVE":
         raise AuthError("사용할 수 없는 계정입니다.", 403)
     session_id = str(uuid.uuid4())
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+    expire_minutes = int(settings_repository.get_value(
+        "session_expire_minutes", str(settings.access_token_expire_minutes)
+    ))
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
     auth_repository.create_session(session_id, user["id"], expires_at.replace(tzinfo=None))
     auth_repository.touch_login(user["id"], session_id)
     return {"accessToken": _encode_token(user["id"], session_id, expires_at), "user": _public_user(user)}

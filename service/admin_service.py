@@ -3,6 +3,7 @@
 import math
 
 from repository import admin_repository
+from repository import settings_repository
 from service.auth_service import AuthError
 
 
@@ -49,3 +50,23 @@ def change_user_role(admin: dict, user_id: int, role_code: str):
         raise AuthError("권한을 변경하지 못했습니다.", 500)
     updated = auth_repository.find_user_by_id(user_id)
     return updated
+
+
+def get_service_settings():
+    values = settings_repository.get_all()
+    return {
+        "signupEnabled": values["signup_enabled"] == "true",
+        "boardWriteEnabled": values["board_write_enabled"] == "true",
+        "inspectionNotificationEnabled": values["inspection_notification_enabled"] == "true",
+        "sessionExpireMinutes": int(values["session_expire_minutes"]),
+    }
+
+
+def update_service_settings(admin: dict, payload):
+    settings_repository.save_all({
+        "signup_enabled": payload.signupEnabled,
+        "board_write_enabled": payload.boardWriteEnabled,
+        "inspection_notification_enabled": payload.inspectionNotificationEnabled,
+        "session_expire_minutes": payload.sessionExpireMinutes,
+    }, admin["id"])
+    return get_service_settings()
