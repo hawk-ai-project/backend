@@ -13,3 +13,8 @@ WHERE id = :menu_id;
 -- name: insert_menu
 INSERT INTO menu (name, path, icon, is_use, sort_order)
 VALUES (:name, :path, :icon, :is_use, :sort_order);
+
+-- NAME : UPDATE_MENU_TEST
+UPDATE MENU
+SET NAME =:NAME
+WHERE ID = 1
