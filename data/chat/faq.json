@@ -1,0 +1,122 @@
+[
+  {
+    "id": "service_intro", "category": "SERVICE", "question": "Hawk-AI는 어떤 서비스인가요?",
+    "keywords": ["hawk-ai", "서비스", "소개", "뭐하는", "무슨 서비스", "서비스 설명"],
+    "answer": "Hawk-AI는 해안 현장에서 촬영한 이미지를 기반으로 폐기물을 탐지하고, 점검 결과와 후속 정보를 관리하는 AI 기반 현장점검 서비스입니다.", "suggested": true, "action": "HOME"
+  },
+  {
+    "id": "service_features", "category": "SERVICE", "question": "Hawk-AI의 주요 기능은 무엇인가요?",
+    "keywords": ["주요 기능", "제공 기능", "무슨 기능", "할 수 있는 것"],
+    "answer": "Hawk-AI는 카메라 기반 현장점검, YOLO 폐기물 탐지, 점검이력 관리, 통계 시각화, 게시판과 AI 게시글 초안 생성, 사용자 인증과 관리자 기능을 제공합니다.", "suggested": false
+  },
+  {
+    "id": "service_flow", "category": "SERVICE", "question": "Hawk-AI는 어떻게 사용하나요?",
+    "keywords": ["사용법", "사용 방법", "이용 방법", "서비스 이용", "사용 순서"],
+    "answer": "로그인 후 현장점검에서 이미지를 촬영하고 분석을 요청할 수 있습니다. 생성된 결과는 점검이력에서 확인하고, 통계분석과 게시판에서 관련 정보를 조회하거나 공유할 수 있습니다.", "suggested": false, "action": "INSPECTION_START"
+  },
+  {
+    "id": "inspection_usage", "category": "INSPECTION", "question": "현장 점검은 어떻게 하나요?",
+    "keywords": ["현장점검", "현장 점검", "점검 방법", "촬영", "분석 방법"],
+    "answer": "현장점검 화면에서 카메라로 현장 이미지를 촬영하고 점검 정보를 입력합니다. 촬영 이미지를 확인한 뒤 분석을 요청할 수 있습니다.", "suggested": true, "action": "INSPECTION_START"
+  },
+  {
+    "id": "inspection_history_usage", "category": "INSPECTION", "question": "점검 이력은 어디에서 확인하나요?",
+    "keywords": ["점검이력", "점검 이력", "과거 점검", "이력 확인", "점검 기록"],
+    "answer": "상단 메뉴의 점검이력에서 점검 결과 목록과 상세 내용을 확인할 수 있습니다. 챗봇의 실제 점검이력 조회는 로그인이 필요합니다.", "suggested": false, "action": "INSPECTION_HISTORY"
+  },
+  {
+    "id": "inspection_status", "category": "INSPECTION", "question": "점검 상태는 무엇을 의미하나요?",
+    "keywords": ["점검 상태", "review_required", "resolved", "action_required", "상태 의미"],
+    "answer": "REVIEW_REQUIRED는 결과 검토가 필요한 상태, ACTION_REQUIRED는 후속 조치가 필요한 상태, RESOLVED는 필요한 처리가 마무리된 상태를 의미합니다. 그 밖에 작성 중 DRAFT, 분석 중 ANALYZING, 분석 실패 FAILED 상태가 있습니다.", "suggested": false
+  },
+  {
+    "id": "ai_detection", "category": "AI", "question": "폐기물은 어떻게 탐지하나요?",
+    "keywords": ["폐기물 탐지", "AI 탐지", "객체 탐지", "탐지 모델", "이미지 분석"],
+    "answer": "현장점검에서 촬영한 이미지를 YOLO 객체 탐지 모델로 분석해 폐기물의 종류와 위치를 탐지합니다.", "suggested": false
+  },
+  {
+    "id": "ai_detection_classes", "category": "AI", "question": "어떤 폐기물을 탐지할 수 있나요?",
+    "keywords": ["폐기물 종류", "탐지 대상", "클래스", "class", "탐지 종류"],
+    "answer": "현재 데이터 구조에는 페트병, 로프, 플라스틱 부표, 스티로폼, 어망, 기타 폐기물이 탐지 대상으로 등록되어 있습니다.", "suggested": false
+  },
+  {
+    "id": "yolo_model", "category": "AI", "question": "YOLO 모델은 어떻게 구현했나요?",
+    "keywords": ["yolo 모델", "객체탐지 모델", "탐지 학습", "AI 모델"],
+    "answer": "Hawk-AI는 YOLO 데이터 전처리와 학습을 거친 객체 탐지 모델을 사용해 해안 이미지의 부유물과 폐기물을 탐지하도록 구성했습니다.", "suggested": false
+  },
+  {
+    "id": "board_usage", "category": "BOARD", "question": "게시판에서는 무엇을 할 수 있나요?",
+    "keywords": ["게시판", "게시글", "글쓰기", "게시판 기능"],
+    "answer": "게시판에서는 게시글 목록과 상세 내용을 조회하고 검색할 수 있습니다. 로그인 사용자는 글을 작성하고 자신이 작성한 글을 수정하거나 삭제할 수 있습니다.", "suggested": false, "action": "BOARD_LIST"
+  },
+  {
+    "id": "board_ai", "category": "BOARD", "question": "AI 게시글 생성은 어떻게 사용하나요?",
+    "keywords": ["AI 글쓰기", "AI 게시글", "게시글 생성", "AI 글 생성", "게시판 AI"],
+    "answer": "게시판 글쓰기에서 AI 글 생성을 열고 위치와 폐기물 현황을 입력하면 백그라운드에서 초안을 생성합니다. 완료 알림을 눌러 작성 폼에 적용한 뒤 내용을 수정하고 직접 등록할 수 있습니다.", "suggested": false, "action": "BOARD_WRITE"
+  },
+  {
+    "id": "board_ai_output", "category": "BOARD", "question": "AI 게시글은 무엇을 생성하나요?",
+    "keywords": ["제목", "요약", "본문", "title", "summary", "content", "AI 결과"],
+    "answer": "게시판 AI는 제목, 요약, Markdown 본문 초안을 생성합니다. 게시글을 DB에 자동 저장하지 않으며 사용자가 결과를 확인하고 수정한 뒤 등록합니다.", "suggested": false, "action": "BOARD_WRITE"
+  },
+  {
+    "id": "board_permission", "category": "BOARD", "question": "게시글은 누가 수정하거나 삭제할 수 있나요?",
+    "keywords": ["게시글 수정", "게시글 삭제", "작성자", "게시판 권한", "수정 권한", "삭제 권한"],
+    "answer": "게시글 수정과 삭제는 해당 게시글의 작성자만 할 수 있습니다. 삭제 시에는 데이터를 즉시 지우지 않고 삭제 시각을 기록하는 방식으로 처리합니다.", "suggested": false
+  },
+  {
+    "id": "llm_model", "category": "AI", "question": "게시판 AI는 어떤 모델을 사용하나요?",
+    "keywords": ["qwen", "lora", "qlora", "게시판 AI 모델", "LLM 모델"],
+    "answer": "게시판 AI는 로컬 Qwen2.5-1.5B-Instruct 베이스 모델과 게시판 초안 생성 전용 PEFT LoRA 어댑터를 사용합니다.", "suggested": false
+  },
+  {
+    "id": "llm_training", "category": "AI", "question": "LLM은 어떻게 학습했나요?",
+    "keywords": ["LLM 학습", "SFT", "QLoRA", "LoRA", "파인튜닝", "fine tuning", "Qwen 학습"],
+    "answer": "게시판 초안 생성 기능은 Qwen 베이스 모델에 게시판 전용 LoRA 어댑터를 적용합니다. 챗봇은 별도 학습이나 LoRA 없이 Qwen 베이스 모델과 FAQ·프로젝트·DB 문맥을 사용합니다.", "suggested": false
+  },
+  {
+    "id": "llm_usage", "category": "AI", "question": "LLM은 어디에 사용되나요?",
+    "keywords": ["LLM 기능", "LLM 사용", "생성형 AI", "AI 글쓰기", "LLM 역할"],
+    "answer": "LLM은 게시판의 제목·요약·Markdown 본문 초안 생성과, 정적 데이터나 조회 템플릿으로 답할 수 없는 챗봇 질문의 보조 답변 생성에 사용됩니다.", "suggested": false
+  },
+  {
+    "id": "project_purpose", "category": "PROJECT", "question": "Hawk-AI 프로젝트의 목적은 무엇인가요?",
+    "keywords": ["프로젝트 목적", "개발 목적", "기획 목적", "왜 만들었어", "프로젝트 목표"],
+    "answer": "Hawk-AI의 목적은 해안 현장의 폐기물 탐지와 점검 기록 관리를 AI로 지원하고, 결과를 이력·통계·게시판 기능으로 활용할 수 있게 하는 것입니다.", "suggested": false
+  },
+  {
+    "id": "project_stack", "category": "PROJECT", "question": "어떤 기술을 사용했나요?",
+    "keywords": ["기술스택", "기술 스택", "tech stack", "사용 기술", "개발 기술"],
+    "answer": "Hawk-AI는 Next.js와 React 프론트엔드, FastAPI 백엔드, MySQL 데이터베이스를 사용합니다. AI 기능에는 Qwen2.5-1.5B-Instruct, PEFT LoRA와 YOLO를 사용합니다.", "suggested": false
+  },
+  {
+    "id": "project_architecture", "category": "PROJECT", "question": "시스템은 어떻게 구성되어 있나요?",
+    "keywords": ["아키텍처", "시스템 구조", "frontend", "backend", "프론트엔드", "백엔드"],
+    "answer": "프론트엔드는 Next.js와 React로 화면과 API 호출을 구성하고, 백엔드는 FastAPI의 controller·service·repository 계층을 통해 MySQL과 AI 기능을 연결합니다.", "suggested": false
+  },
+  {
+    "id": "team_roles", "category": "TEAM", "question": "팀원별 담당 역할을 알려주세요.",
+    "keywords": ["팀원", "역할", "담당", "담당자", "팀원 역할", "업무 분담"],
+    "answer": "팀원별 역할은 프로젝트 정보에 등록된 담당 영역을 기준으로 안내합니다.", "suggested": true
+  },
+  {
+    "id": "frontend_role", "category": "TEAM", "question": "프론트엔드에서는 무엇을 구현했나요?",
+    "keywords": ["프론트", "프론트엔드", "frontend", "UI", "화면 구현"],
+    "answer": "프론트엔드는 Next.js와 React를 기반으로 HOME, 현장점검, 점검이력, 게시판, 통계분석, 로그인과 관리자 화면을 구성하고 백엔드 API와 연동합니다.", "suggested": false
+  },
+  {
+    "id": "backend_role", "category": "TEAM", "question": "백엔드에서는 무엇을 구현했나요?",
+    "keywords": ["백엔드", "backend", "FastAPI", "API", "서버 구현"],
+    "answer": "백엔드는 FastAPI로 인증, 게시판, 관리자와 AI API를 제공하고 repository 계층을 통해 MySQL 데이터를 처리하도록 구성되어 있습니다.", "suggested": false
+  },
+  {
+    "id": "login_required", "category": "ACCOUNT", "question": "로그인이 필요한가요?",
+    "keywords": ["로그인", "회원가입", "인증", "로그인 필요", "비회원"],
+    "answer": "서비스 소개, 프로젝트 안내와 게시판 조회는 비로그인 상태에서도 이용할 수 있습니다. 게시글 작성과 자신의 점검이력 조회처럼 사용자 확인이 필요한 기능은 로그인이 필요합니다.", "suggested": false, "action": "LOGIN"
+  },
+  {
+    "id": "admin_role", "category": "ACCOUNT", "question": "관리자는 어떤 기능을 사용할 수 있나요?",
+    "keywords": ["관리자", "admin", "관리자 기능", "관리 권한", "권한 관리"],
+    "answer": "관리자는 관리자 화면에서 사용자와 권한, 게시글 등 운영 대상 정보를 관리할 수 있습니다. 구체적인 접근 범위는 현재 계정에 부여된 관리자 권한을 따릅니다.", "suggested": false
+  }
+]

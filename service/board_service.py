@@ -5,9 +5,10 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from AI.LLM import board_generator
+from client import ai_client
 from domain.board import BoardAIGenerateRequest, BoardCreate, BoardUpdate
 from repository import board_repository
+from service import board_draft_service
 
 
 _ai_jobs: dict[str, dict] = {}
@@ -35,7 +36,7 @@ def get_board_detail(board_id: int) -> dict:
     if board is None:
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
     if any(key in board for key in ("title", "summary", "content")):
-        clean = board_generator.sanitize_board_draft(
+        clean = board_draft_service.sanitize_board_draft(
             board,
             location="점검 현장",
             waste_summary=board.get("summary") or "점검 결과를 확인해 주세요.",
@@ -89,21 +90,15 @@ def delete_board(board_id: int, user: dict) -> None:
 
 def generate_board_draft(payload: BoardAIGenerateRequest) -> dict[str, str]:
     try:
-        draft = board_generator.generate_board_post(
-            location=payload.location,
-            waste_summary=payload.wasteSummary,
-            priority=payload.priority,
-            category=payload.category,
-            notes=payload.notes,
-        )
+        draft = ai_client.generate_board(payload.model_dump())
         # This job payload is copied into the editor later. Validate it again
         # here so a malformed model result cannot be persisted in the browser.
-        return board_generator.sanitize_board_draft(
+        return board_draft_service.sanitize_board_draft(
             draft,
             location=payload.location,
             waste_summary=payload.wasteSummary,
         )
-    except FileNotFoundError as error:
+    except ai_client.AIServerError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except (ImportError, RuntimeError, OSError) as error:
         raise HTTPException(

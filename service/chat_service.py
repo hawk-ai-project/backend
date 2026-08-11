@@ -8,12 +8,12 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from AI.LLM import chatbot
+from client import ai_client
 from repository import chat_repository
 
 
 logger = logging.getLogger(__name__)
-DATA_DIR = Path(__file__).resolve().parents[1] / "AI" / "LLM" / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "chat"
 PROJECT_KEYWORDS = (
     "담당", "담당자", "팀원", "역할", "구현", "개발", "기술스택", "기술 스택",
     "프론트", "백엔드", "frontend", "backend", "yolo", "llm", "모델", "아키텍처",
@@ -200,7 +200,9 @@ def _history_template(rows: list[dict]) -> str:
 
 def _generate(context: str, message: str) -> str:
     try:
-        return chatbot.generate_answer(context, message)
+        return ai_client.generate_chat(context, message)
+    except ai_client.AIServerError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     except FileNotFoundError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except (ImportError, RuntimeError, OSError) as error:

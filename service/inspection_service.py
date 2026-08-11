@@ -1,22 +1,24 @@
-# backend/service/inspection_service.py
-
 import json
 
+from fastapi import HTTPException
+
+from client import ai_client
 from domain.inspection import InspectionRequest, InspectionResponse
 from repository import chat_repository
 from service import file_service
 
+
 def analyze_image(payload: InspectionRequest) -> InspectionResponse:
-# 터미널에 수신 확인 로그
-    print(f"프론트엔드에서 사진 수신 완료, 데이터 길이 : {len(payload.image)}")
-
-    # 추후 AI모델로 사진 분석하는 코드 입력
-
-    # 분석 후 백엔드에서 프론트로 보낼 결과
-    return InspectionResponse(
-        message="사진을 전달받았습니다.",
-        result="OK"
-    )
+    try:
+        result = ai_client.detect_image(payload.image)
+        return InspectionResponse.model_validate(result)
+    except ai_client.AIServerError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI 서버의 객체 탐지 응답 형식이 올바르지 않습니다: {error}",
+        ) from error
 
 
 def get_recent_history(user: dict, limit: int) -> list[dict]:

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "latest_inspection",
+    "intent": "INSPECTION_HISTORY",
+    "patterns": ["최근 점검", "가장 최근 점검", "최신 점검", "최근 점검 결과", "마지막 점검", "최근 점검 알려줘"],
+    "action": "GET_LATEST_INSPECTION",
+    "default_limit": 1
+  },
+  {
+    "id": "recent_inspections",
+    "intent": "INSPECTION_HISTORY",
+    "patterns": ["최근 점검 몇 건", "최근 점검 내역", "점검 목록", "최근 점검 목록"],
+    "action": "GET_RECENT_INSPECTIONS",
+    "default_limit": 5
+  },
+  {
+    "id": "inspection_by_location",
+    "intent": "INSPECTION_HISTORY",
+    "patterns": ["{location} 점검 결과", "{location} 점검 이력", "{location} 최근 점검", "{location}에서 뭐가 발견됐어", "{location}에서 무엇이 발견됐어"],
+    "action": "GET_INSPECTIONS_BY_LOCATION",
+    "default_limit": 5
+  },
+  {
+    "id": "inspection_by_waste",
+    "intent": "INSPECTION_HISTORY",
+    "patterns": ["{waste} 발견", "{waste} 탐지", "{waste}가 나온 곳", "{waste} 발견된 곳", "{waste} 점검 결과"],
+    "action": "GET_INSPECTIONS_BY_WASTE",
+    "default_limit": 5
+  }
+]

@@ -30,19 +30,25 @@ class Settings:
     minio_bucket: str
     minio_secure: bool
     max_upload_size_bytes: int
+    ai_server_url: str
+    ai_server_timeout_seconds: float
 
 
 def get_settings() -> Settings:
     expire_minutes = os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
     max_upload_size = os.getenv("MAX_UPLOAD_SIZE_MB", "20")
+    ai_server_timeout = os.getenv("AI_SERVER_TIMEOUT_SECONDS", "120")
     try:
         parsed_expire_minutes = int(expire_minutes)
         parsed_max_upload_size = int(max_upload_size) * 1024 * 1024
+        parsed_ai_server_timeout = float(ai_server_timeout)
     except ValueError as exc:
         raise RuntimeError("Numeric environment variables must be integers") from exc
 
     if parsed_max_upload_size <= 0:
         raise RuntimeError("MAX_UPLOAD_SIZE_MB must be greater than zero")
+    if parsed_ai_server_timeout <= 0:
+        raise RuntimeError("AI_SERVER_TIMEOUT_SECONDS must be greater than zero")
 
     return Settings(
         database_url=_required("DATABASE_URL"),
@@ -57,6 +63,8 @@ def get_settings() -> Settings:
         minio_bucket=os.getenv("MINIO_BUCKET", "hawk-files"),
         minio_secure=os.getenv("MINIO_SECURE", "false").lower() in {"1", "true", "yes"},
         max_upload_size_bytes=parsed_max_upload_size,
+        ai_server_url=os.getenv("AI_SERVER_URL", "http://192.168.0.102:8000").rstrip("/"),
+        ai_server_timeout_seconds=parsed_ai_server_timeout,
     )
 
 
