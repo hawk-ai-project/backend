@@ -55,6 +55,8 @@ def execute_query(
     connection = engine.raw_connection()
     try:
         with connection.cursor(pymysql.cursors.DictCursor) as cursor:
+            full_sql = cursor.mogrify(sql, args)
+            print(f"\n[SQL EXECUTE]\n{full_sql}\n")
             cursor.execute(sql, args)
             connection.commit()
             return int(cursor.lastrowid or cursor.rowcount)
@@ -75,6 +77,8 @@ def fetch_query(
     connection = engine.raw_connection()
     try:
         with connection.cursor(pymysql.cursors.DictCursor) as cursor:
+            full_sql = cursor.mogrify(sql, args)
+            print(f"\n[SQL FETCH]\n{full_sql}\n")
             cursor.execute(sql, args)
             if one:
                 return cursor.fetchone()

@@ -2,16 +2,24 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # 프론트엔드에서 백엔드로
 class InspectionRequest(BaseModel):
     image: str
 
 # 백엔드에서 프론트엔드로
+class ObjectDetection(BaseModel):
+    className: str
+    confidence: float = Field(ge=0, le=1)
+    bbox: list[float]
+
+
 class InspectionResponse(BaseModel):
-    message: str
-    result: str
+    message: str = "이미지 분석이 완료되었습니다."
+    detections: list[ObjectDetection]
+    annotatedImage: str | None = None
+    inferenceMs: int | None = None
 
 
 class InspectionDetection(BaseModel):

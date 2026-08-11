@@ -2,8 +2,9 @@
 .venv/
 venv/
 
-# PyCharm 설정 파일
+# IDE 설정 파일 (PyCharm, VS Code)
 .idea/
+.vscode/
 
 # 파이썬 캐시 파일
 __pycache__/
@@ -16,6 +17,6 @@ __pycache__/
 # 보안 민감 설정 파일
 .env
 
-# Local LLM models
-AI/LLM/models/
+# AI inference code and model assets live on the dedicated GPU server.
+AI/
 *.safetensors
