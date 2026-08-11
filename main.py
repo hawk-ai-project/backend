@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from controller import admin_controller, auth_controller, board_controller, chat_controller, file_controller, inspection_controller, menu_controller, question_controller, analytics_controller
+from controller import admin_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, inspection_controller, menu_controller, question_controller
 from service.auth_service import AuthError
 
 from fastapi.responses import HTMLResponse  # 추가됨
@@ -36,6 +36,7 @@ app.include_router(file_controller.router)
 app.include_router(chat_controller.router)
 app.include_router(inspection_controller.router)
 app.include_router(analytics_controller.router)
+app.include_router(analytics_insight_controller.router)
 
 # ---------------------------------------------------------
 # 서버 구동 상태 확인용 루트 엔드포인트
