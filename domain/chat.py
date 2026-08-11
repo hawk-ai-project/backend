@@ -37,9 +37,23 @@ class ChatAction(BaseModel):
         return value
 
 
+class ChatNavigationAction(BaseModel):
+    type: Literal["NAVIGATE"]
+    path: Literal[
+        "/inspection",
+        "/histories",
+        "/analytics",
+        "/boards",
+        "/boards/write",
+        "/login",
+    ]
+
+
 class ChatResponse(BaseModel):
     answer: str
     type: ChatIntent
     sourceType: ChatSourceType
     sources: list[ChatSource] = Field(default_factory=list)
     actions: list[ChatAction] = Field(default_factory=list, max_length=2)
+    intent: str | None = None
+    action: ChatNavigationAction | None = None

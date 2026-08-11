@@ -122,3 +122,98 @@ Send the same authorization header to the returned `downloadUrl` to download
 the file. An object is isolated by user ID, so only its uploader can download
 or delete it. The default limit is 20 MB and can be changed with
 `MAX_UPLOAD_SIZE_MB`.
+
+## Remote GPU AI server
+
+The web backend owns authentication, authorization, database access, static
+FAQ/project answers, request validation, and the existing public API. Qwen and
+LoRA inference run only in the separate GPU AI server. The frontend continues
+to call the web backend; it never calls the GPU server directly.
+
+```text
+Frontend -> Hawk-AI Backend -> GPU AI Server
+                              |- LangGraph chat
+                              `- LangChain board generation
+```
+
+Configure the backend with environment variables. Do not commit the real
+`.env`, credentials, internal production addresses, model files, or weights.
+
+```env
+AI_SERVER_URL=http://127.0.0.1:8001
+AI_SERVER_CONNECT_TIMEOUT=5
+AI_SERVER_READ_TIMEOUT=120
+```
+
+Trailing slashes are removed from `AI_SERVER_URL`. Connection and inference
+timeouts are separate. `AI_SERVER_TIMEOUT_SECONDS` remains a temporary fallback
+for the read timeout so older local environments do not break immediately.
+
+When both services run on the same host, they must use different ports:
+
+```bash
+# GPU AI server
+uvicorn main:app --host 0.0.0.0 --port 8001
+
+# Hawk-AI web backend
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Chat inference flow:
+
+```text
+POST /api/chat (public backend API, unchanged)
+  -> local FAQ/project/simple-history handling when possible
+  -> POST {AI_SERVER_URL}/api/ai/chat only when generation is required
+```
+
+Board generation flow:
+
+```text
+POST /api/boards/ai/generate (public backend API, unchanged)
+  -> background AI job
+  -> POST {AI_SERVER_URL}/api/ai/board
+  -> user reviews/edits the draft before normal board creation
+```
+
+The existing chat fields `answer`, `type`, `sourceType`, `sources`, and
+`actions` remain compatible. Remote `intent` and `action` are added as optional
+fields. Only `NAVIGATE` actions to these paths are accepted:
+
+```text
+/inspection  /histories  /analytics  /boards  /boards/write  /login
+```
+
+External URLs, `javascript:` URLs, absolute URLs, admin paths, and unknown
+action types are dropped without failing the valid answer. The frontend accepts
+both the legacy `actions[{label,href}]` format and the new
+`action{type,path}` format.
+
+AI failure mapping:
+
+| Failure | Backend status |
+| --- | --- |
+| Connection failure | 503 Service Unavailable |
+| Read/inference timeout | 504 Gateway Timeout |
+| Invalid JSON or missing required fields | 502 Bad Gateway |
+| Unsafe upstream 4xx/5xx details | Sanitized 502/503 |
+
+Logs contain only a generated request ID, AI endpoint, status, and elapsed
+time. They do not contain user messages, database context, credentials, model
+paths, upstream response bodies, or tracebacks returned to users. If the GPU AI
+server is unavailable, authentication, board CRUD, static FAQ/project answers,
+simple database history answers, analytics, and other non-generative features
+continue to work; generated chat and board drafts return the mapped error.
+
+Run verification without loading real GPU models:
+
+```bash
+python -m compileall -q config.py client service domain controller main.py
+python -m pytest -q
+python -c "from main import app; print(len(app.openapi()['paths']))"
+```
+
+The unit suite uses `httpx.MockTransport` for successful responses, fallback
+fields, navigation validation, timeouts, connection failures, malformed JSON,
+missing fields, FAQ/project fast paths, authorization boundaries, filtered DB
+context, and board draft behavior.

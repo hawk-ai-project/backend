@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from client import ai_client
 from repository import chat_repository
+from service import ai_error_service
 
 
 logger = logging.getLogger(__name__)
@@ -198,17 +199,11 @@ def _history_template(rows: list[dict]) -> str:
     return heading + "\n\n" + "\n\n".join(_history_block(row) for row in rows)
 
 
-def _generate(context: str, message: str) -> str:
+def _generate(context: str, message: str) -> dict[str, Any]:
     try:
         return ai_client.generate_chat(context, message)
     except ai_client.AIServerError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-    except FileNotFoundError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-    except (ImportError, RuntimeError, OSError) as error:
-        raise HTTPException(status_code=503, detail=f"챗봇 모델을 사용할 수 없습니다: {error}") from error
-    except ValueError as error:
-        raise HTTPException(status_code=502, detail=f"챗봇 응답을 처리할 수 없습니다: {error}") from error
+        raise ai_error_service.to_http_exception(error) from error
 
 
 def _actions_for_keys(*keys: str | None) -> list[dict]:
@@ -254,10 +249,44 @@ def _message_action_key(message: str) -> str | None:
     return None
 
 
-def _result(answer: str, intent: str, source_type: str, started: float, sources: list | None = None, records: int | None = None, actions: list | None = None) -> dict:
+def _legacy_action_from_remote(action: dict | None) -> list[dict]:
+    if not action:
+        return []
+    labels = {
+        "/inspection": "현장점검 시작",
+        "/histories": "점검이력 보기",
+        "/analytics": "통계분석 보기",
+        "/boards": "게시판 보기",
+        "/boards/write": "게시글 작성하기",
+        "/login": "로그인하기",
+    }
+    path = action["path"]
+    return [{"label": labels[path], "href": path}]
+
+
+def _result(
+    answer: str,
+    intent: str,
+    source_type: str,
+    started: float,
+    sources: list | None = None,
+    records: int | None = None,
+    actions: list | None = None,
+    remote_intent: str | None = None,
+    remote_action: dict | None = None,
+) -> dict:
     record_log = f" records={records}" if records is not None else ""
     logger.info("[CHAT] intent=%s source=%s%s elapsed=%.3fs", intent, source_type, record_log, perf_counter() - started)
-    return {"answer": answer, "type": intent, "sourceType": source_type, "sources": sources or [], "actions": _sanitize_actions(actions)}
+    legacy_actions = [*(actions or []), *_legacy_action_from_remote(remote_action)]
+    return {
+        "answer": answer,
+        "type": intent,
+        "sourceType": source_type,
+        "sources": sources or [],
+        "actions": _sanitize_actions(legacy_actions),
+        "intent": remote_intent,
+        "action": remote_action,
+    }
 
 
 def chat(message: str, user: dict | None) -> dict:
@@ -279,8 +308,18 @@ def chat(message: str, user: dict | None) -> dict:
         sources = [{"id": row["id"], "location": row["location"], "capturedAt": row["capturedAt"]} for row in rows]
         history_actions = _actions_for_keys("INSPECTION_HISTORY")
         if query["complex"]:
-            answer = _generate(_history_context(rows), message)
-            return _result(answer, "INSPECTION_HISTORY", "QWEN", started, sources, len(rows), history_actions)
+            generated = _generate(_history_context(rows), message)
+            return _result(
+                generated["answer"],
+                "INSPECTION_HISTORY",
+                "QWEN",
+                started,
+                sources,
+                len(rows),
+                history_actions,
+                generated["intent"],
+                generated["action"],
+            )
         return _result(_history_template(rows), "INSPECTION_HISTORY", "INSPECTION_DB", started, sources, len(rows), history_actions)
 
     if _is_project_question(message):
@@ -300,4 +339,13 @@ def chat(message: str, user: dict | None) -> dict:
     context = "\n".join(f"- {item['question']}: {item['answer']}" for item in relevant)
     if not context:
         context = _load_json("project_info.json")["project"]["description"]
-    return _result(_generate(context, message), "FAQ", "QWEN", started, actions=_actions_for_keys(_message_action_key(message)))
+    generated = _generate(context, message)
+    return _result(
+        generated["answer"],
+        "FAQ",
+        "QWEN",
+        started,
+        actions=_actions_for_keys(_message_action_key(message)),
+        remote_intent=generated["intent"],
+        remote_action=generated["action"],
+    )

@@ -1,58 +1,164 @@
-"""Synchronous client for the remote GPU inference server."""
+"""HTTP client for the remote GPU AI server.
+
+Only request metadata is logged. User messages, database context, model paths,
+credentials, and upstream response bodies are deliberately excluded.
+"""
 
 import base64
 import binascii
+import logging
+from time import perf_counter
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
 from config import settings
 
 
+logger = logging.getLogger(__name__)
+ALLOWED_NAVIGATION_PATHS = {
+    "/inspection",
+    "/histories",
+    "/analytics",
+    "/boards",
+    "/boards/write",
+    "/login",
+}
+
+
 class AIServerError(RuntimeError):
-    """Raised when the GPU server is unavailable or returns an invalid response."""
+    status_code = 502
+    public_message = "AI 서버 응답을 처리할 수 없습니다."
+
+    def __init__(self, message: str | None = None):
+        super().__init__(message or self.public_message)
 
 
-def _post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+class AIConnectionError(AIServerError):
+    status_code = 503
+    public_message = "AI 서버에 연결할 수 없습니다."
+
+
+class AITimeoutError(AIServerError):
+    status_code = 504
+    public_message = "AI 서버 응답 시간이 초과되었습니다."
+
+
+class AIResponseError(AIServerError):
+    status_code = 502
+    public_message = "AI 서버가 올바르지 않은 응답을 반환했습니다."
+
+
+class AIUnavailableError(AIServerError):
+    status_code = 503
+    public_message = "AI 서버를 현재 사용할 수 없습니다."
+
+
+def _timeout() -> httpx.Timeout:
+    return httpx.Timeout(
+        connect=settings.ai_server_connect_timeout,
+        read=settings.ai_server_read_timeout,
+        write=settings.ai_server_read_timeout,
+        pool=settings.ai_server_connect_timeout,
+    )
+
+
+def _log_result(request_id: str, endpoint: str, status: int | str, started: float) -> None:
+    logger.info(
+        "AI request id=%s endpoint=%s status=%s elapsed_ms=%d",
+        request_id,
+        endpoint,
+        status,
+        round((perf_counter() - started) * 1000),
+    )
+
+
+def _raise_for_status(response: httpx.Response) -> None:
     try:
-        with httpx.Client(trust_env=False) as client:
-            response = client.post(
-                f"{settings.ai_server_url}{path}",
-                json=payload,
-                timeout=settings.ai_server_timeout_seconds,
-            )
         response.raise_for_status()
-    except httpx.TimeoutException as error:
-        raise AIServerError("AI 서버 응답 시간이 초과되었습니다.") from error
-    except httpx.ConnectError as error:
-        raise AIServerError("AI 서버에 연결할 수 없습니다.") from error
     except httpx.HTTPStatusError as error:
-        detail = error.response.text[:500]
-        raise AIServerError(
-            f"AI 서버가 오류를 반환했습니다 ({error.response.status_code}): {detail}"
-        ) from error
-    except httpx.HTTPError as error:
-        raise AIServerError(f"AI 서버 통신 중 오류가 발생했습니다: {error}") from error
+        if error.response.status_code == 503:
+            raise AIUnavailableError() from error
+        raise AIResponseError() from error
 
+
+def _decode_json(response: httpx.Response) -> dict[str, Any]:
     try:
         data = response.json()
     except ValueError as error:
-        raise AIServerError("AI 서버 응답이 JSON 형식이 아닙니다.") from error
+        raise AIResponseError("AI 서버 응답이 JSON 형식이 아닙니다.") from error
     if not isinstance(data, dict):
-        raise AIServerError("AI 서버 응답은 JSON 객체여야 합니다.")
+        raise AIResponseError("AI 서버 응답은 JSON 객체여야 합니다.")
     return data
 
 
-def generate_chat(context: str, message: str) -> str:
-    data = _post("/api/ai/chat", {"context": context, "message": message})
+def _post_json(
+    endpoint: str,
+    payload: dict[str, Any],
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> dict[str, Any]:
+    request_id = uuid4().hex
+    started = perf_counter()
+    status: int | str = "network_error"
+    try:
+        with httpx.Client(trust_env=False, timeout=_timeout(), transport=transport) as client:
+            response = client.post(f"{settings.ai_server_url}{endpoint}", json=payload)
+        status = response.status_code
+        _raise_for_status(response)
+        return _decode_json(response)
+    except httpx.TimeoutException as error:
+        status = "timeout"
+        raise AITimeoutError() from error
+    except httpx.ConnectError as error:
+        raise AIConnectionError() from error
+    except httpx.HTTPError as error:
+        raise AIConnectionError("AI 서버 통신에 실패했습니다.") from error
+    finally:
+        _log_result(request_id, endpoint, status, started)
+
+
+def _sanitize_remote_action(value: Any) -> dict[str, str] | None:
+    if not isinstance(value, dict):
+        return None
+    action_type = value.get("type")
+    path = value.get("path")
+    if action_type != "NAVIGATE" or path not in ALLOWED_NAVIGATION_PATHS:
+        return None
+    return {"type": "NAVIGATE", "path": path}
+
+
+def generate_chat(
+    context: str,
+    message: str,
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> dict[str, Any]:
+    data = _post_json(
+        "/api/ai/chat",
+        {"context": context, "message": message},
+        transport=transport,
+    )
     answer = data.get("answer")
     if not isinstance(answer, str) or not answer.strip():
-        raise AIServerError("AI 서버의 챗봇 응답에 answer가 없습니다.")
-    return answer.strip()
+        answer = data.get("message")
+    if not isinstance(answer, str) or not answer.strip():
+        raise AIResponseError("AI 서버의 챗봇 응답에 answer 또는 message가 없습니다.")
+    intent = data.get("intent")
+    return {
+        "answer": answer.strip(),
+        "intent": intent if isinstance(intent, str) and intent.strip() else None,
+        "action": _sanitize_remote_action(data.get("action")),
+    }
 
 
-def generate_board(payload: dict[str, Any]) -> dict[str, Any]:
-    data = _post(
+def generate_board(
+    payload: dict[str, Any],
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> dict[str, str]:
+    data = _post_json(
         "/api/ai/board",
         {
             "location": payload["location"],
@@ -61,14 +167,25 @@ def generate_board(payload: dict[str, Any]) -> dict[str, Any]:
             "category": payload.get("category"),
             "notes": payload.get("notes"),
         },
+        transport=transport,
     )
     draft = data.get("draft", data)
     if not isinstance(draft, dict):
-        raise AIServerError("AI 서버의 게시글 응답 형식이 올바르지 않습니다.")
-    return draft
+        raise AIResponseError("AI 서버의 게시글 응답은 JSON 객체여야 합니다.")
+    result: dict[str, str] = {}
+    for key in ("title", "summary", "content"):
+        value = draft.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise AIResponseError(f"AI 서버의 게시글 응답에 {key} 필드가 없습니다.")
+        result[key] = value.strip()
+    return result
 
 
-def detect_image(image: str) -> dict[str, Any]:
+def detect_image(
+    image: str,
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> dict[str, Any]:
     encoded = image
     content_type = "image/jpeg"
     if image.startswith("data:"):
@@ -76,39 +193,34 @@ def detect_image(image: str) -> dict[str, Any]:
             header, encoded = image.split(",", 1)
             content_type = header[5:].split(";", 1)[0] or content_type
         except ValueError as error:
-            raise AIServerError("이미지 data URL 형식이 올바르지 않습니다.") from error
+            raise AIResponseError("이미지 data URL 형식이 올바르지 않습니다.") from error
     try:
         image_bytes = base64.b64decode(encoded, validate=True)
     except (ValueError, binascii.Error) as error:
-        raise AIServerError("이미지가 올바른 base64 형식이 아닙니다.") from error
+        raise AIResponseError("이미지가 올바른 base64 형식이 아닙니다.") from error
     if not image_bytes:
-        raise AIServerError("빈 이미지는 분석할 수 없습니다.")
+        raise AIResponseError("빈 이미지는 분석할 수 없습니다.")
 
+    endpoint = "/api/ai/detect"
+    request_id = uuid4().hex
+    started = perf_counter()
+    status: int | str = "network_error"
     extension = content_type.rsplit("/", 1)[-1].replace("jpeg", "jpg")
     try:
-        with httpx.Client(trust_env=False) as client:
+        with httpx.Client(trust_env=False, timeout=_timeout(), transport=transport) as client:
             response = client.post(
-                f"{settings.ai_server_url}/api/ai/detect",
+                f"{settings.ai_server_url}{endpoint}",
                 files={"file": (f"inspection.{extension}", image_bytes, content_type)},
-                timeout=settings.ai_server_timeout_seconds,
             )
-        response.raise_for_status()
+        status = response.status_code
+        _raise_for_status(response)
+        return _decode_json(response)
     except httpx.TimeoutException as error:
-        raise AIServerError("AI 서버 응답 시간이 초과되었습니다.") from error
+        status = "timeout"
+        raise AITimeoutError() from error
     except httpx.ConnectError as error:
-        raise AIServerError("AI 서버에 연결할 수 없습니다.") from error
-    except httpx.HTTPStatusError as error:
-        detail = error.response.text[:500]
-        raise AIServerError(
-            f"AI 서버가 오류를 반환했습니다 ({error.response.status_code}): {detail}"
-        ) from error
+        raise AIConnectionError() from error
     except httpx.HTTPError as error:
-        raise AIServerError(f"AI 서버 통신 중 오류가 발생했습니다: {error}") from error
-
-    try:
-        data = response.json()
-    except ValueError as error:
-        raise AIServerError("AI 서버 응답이 JSON 형식이 아닙니다.") from error
-    if not isinstance(data, dict):
-        raise AIServerError("AI 서버 응답은 JSON 객체여야 합니다.")
-    return data
+        raise AIConnectionError("AI 서버 통신에 실패했습니다.") from error
+    finally:
+        _log_result(request_id, endpoint, status, started)

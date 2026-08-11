@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from client import ai_client
 from domain.inspection import InspectionRequest, InspectionResponse
 from repository import chat_repository, inspection_repository
-from service import file_service
+from service import ai_error_service, file_service
 
 
 def analyze_image(payload: InspectionRequest) -> InspectionResponse:
@@ -13,11 +13,11 @@ def analyze_image(payload: InspectionRequest) -> InspectionResponse:
         result = ai_client.detect_image(payload.image)
         return InspectionResponse.model_validate(result)
     except ai_client.AIServerError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
+        raise ai_error_service.to_http_exception(error) from error
     except ValueError as error:
         raise HTTPException(
             status_code=502,
-            detail=f"AI 서버의 객체 탐지 응답 형식이 올바르지 않습니다: {error}",
+            detail="AI 서버의 객체 탐지 응답 형식이 올바르지 않습니다.",
         ) from error
 
 

@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from client import ai_client
 from domain.board import BoardAIGenerateRequest, BoardCreate, BoardUpdate
 from repository import board_repository
-from service import board_draft_service
+from service import ai_error_service, board_draft_service
 
 
 _ai_jobs: dict[str, dict] = {}
@@ -99,16 +99,11 @@ def generate_board_draft(payload: BoardAIGenerateRequest) -> dict[str, str]:
             waste_summary=payload.wasteSummary,
         )
     except ai_client.AIServerError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-    except (ImportError, RuntimeError, OSError) as error:
-        raise HTTPException(
-            status_code=503,
-            detail=f"AI 모델을 사용할 수 없습니다: {error}",
-        ) from error
+        raise ai_error_service.to_http_exception(error) from error
     except ValueError as error:
         raise HTTPException(
             status_code=502,
-            detail=f"AI 생성 결과를 처리할 수 없습니다: {error}",
+            detail="AI 생성 결과를 처리할 수 없습니다.",
         ) from error
 
 
@@ -158,7 +153,7 @@ def run_board_ai_job(job_id: str, payload: BoardAIGenerateRequest) -> None:
             job = _ai_jobs.get(job_id)
             if job is not None:
                 job["status"] = "FAILED"
-                job["error"] = f"AI 글 생성 중 오류가 발생했습니다: {error}"
+                job["error"] = "AI 글 생성 중 오류가 발생했습니다."
                 job["completedAt"] = datetime.now(timezone.utc)
 
 

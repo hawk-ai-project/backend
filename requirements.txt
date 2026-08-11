@@ -16,6 +16,7 @@ pydantic_core==2.46.4
 PyMySQL==1.2.0
 python-dotenv==1.2.2
 PyYAML==6.0.3
+pytest>=8,<9
 minio>=7.2,<8
 python-multipart>=0.0.20,<1
 SQLAlchemy==2.0.51
