@@ -23,6 +23,7 @@ class InspectionHistoryItem(BaseModel):
     id: int
     title: str
     location: str
+    coordinates: str | None = None
     capturedAt: datetime
     status: str
     priority: str

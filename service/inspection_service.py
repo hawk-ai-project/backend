@@ -34,6 +34,7 @@ def get_recent_history(user: dict, limit: int) -> list[dict]:
             "id": row["id"],
             "title": row["title"],
             "location": row["location"],
+            "coordinates": row.get("coordinates"),
             "capturedAt": row["capturedAt"],
             "status": row["status"],
             "priority": row["priority"],

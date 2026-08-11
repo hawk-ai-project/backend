@@ -45,6 +45,8 @@ def find_inspection_history(
 
     rows = fetch_query(
         f"""SELECT i.id, i.title, COALESCE(l.name, '미지정 위치') AS location,
+                   CASE WHEN l.latitude IS NULL OR l.longitude IS NULL THEN NULL
+                        ELSE CONCAT(l.latitude, ',', l.longitude) END AS coordinates,
                    i.status, i.priority, i.captured_at AS capturedAt,
                    i.notes, i.ai_opinion AS aiOpinion, u.name AS inspectorName,
                    COALESCE(waste_summary.summary, '탐지 결과 없음') AS wasteSummary,
