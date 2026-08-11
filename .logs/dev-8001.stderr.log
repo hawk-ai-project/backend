@@ -1,0 +1,8 @@
+C:\Users\Kwon\Desktop\Projects\hawk-ai\backend\controller\analytics_controller.py:11: FastAPIDeprecationWarning: `example` has been deprecated, please use `examples` instead
+  startDate: str = Query(..., description="조회 시작일 (YYYY-MM-DD)", example="2026-08-01"),
+C:\Users\Kwon\Desktop\Projects\hawk-ai\backend\controller\analytics_controller.py:12: FastAPIDeprecationWarning: `example` has been deprecated, please use `examples` instead
+  endDate: str = Query(..., description="조회 종료일 (YYYY-MM-DD)", example="2026-08-10"),
+INFO:     Started server process [8108]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)

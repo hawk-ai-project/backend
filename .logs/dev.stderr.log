@@ -1,0 +1,10 @@
+C:\Users\Kwon\Desktop\Projects\hawk-ai\backend\controller\analytics_controller.py:11: FastAPIDeprecationWarning: `example` has been deprecated, please use `examples` instead
+  startDate: str = Query(..., description="조회 시작일 (YYYY-MM-DD)", example="2026-08-01"),
+C:\Users\Kwon\Desktop\Projects\hawk-ai\backend\controller\analytics_controller.py:12: FastAPIDeprecationWarning: `example` has been deprecated, please use `examples` instead
+  endDate: str = Query(..., description="조회 종료일 (YYYY-MM-DD)", example="2026-08-10"),
+INFO:     Started server process [12532]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('127.0.0.1', 8000): [winerror 10048] 각 소켓 주소(프로토콜/네트워크 주소/포트)는 하나만 사용할 수 있습니다
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.

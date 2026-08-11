@@ -3,7 +3,7 @@ import json
 from fastapi import HTTPException, status
 
 from client import ai_client
-from domain.inspection import InspectionRequest, InspectionResponse
+from domain.inspection import InspectionCreateRequest, InspectionRequest, InspectionResponse
 from repository import chat_repository, inspection_repository
 from service import ai_error_service, file_service
 
@@ -52,8 +52,34 @@ def get_recent_history(user: dict, limit: int) -> list[dict]:
     return result
 
 
-def get_history_image(inspection_id: int, user: dict):
-    return file_service.open_inspection_image(inspection_id, user)
+def create_inspection(payload: InspectionCreateRequest, user: dict) -> dict:
+    try:
+        analysis = ai_client.detect_image(payload.image)
+    except ai_client.AIServerError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+    original = file_service.store_inspection_data_image(payload.image, user["id"], "ORIGINAL")
+    annotated_data = analysis.get("annotatedImage")
+    annotated = None
+    if isinstance(annotated_data, str) and annotated_data:
+        annotated = file_service.store_inspection_data_image(annotated_data, user["id"], "ANNOTATED")
+
+    location_id = inspection_repository.find_or_create_location(payload.location.strip(), user["id"])
+    inspection_id = inspection_repository.create_inspection(
+        location_id, user["id"], payload.title.strip(), payload.notes,
+    )
+    inspection_repository.create_inspection_image(inspection_id, "ORIGINAL", original)
+    if annotated:
+        inspection_repository.create_inspection_image(inspection_id, "ANNOTATED", annotated)
+    return {
+        "inspectionId": inspection_id,
+        "message": "점검과 분석 이미지가 저장되었습니다.",
+        "detections": analysis.get("detections") or [],
+    }
+
+
+def get_history_image(inspection_id: int, user: dict, kind: str | None = None):
+    return file_service.open_inspection_image(inspection_id, user, kind)
 
 
 def get_assignees() -> list[dict]:

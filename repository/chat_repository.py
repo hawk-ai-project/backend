@@ -102,16 +102,22 @@ def find_accessible_inspection_image(
     inspection_id: int,
     user_id: int,
     is_admin: bool,
+    kind: str | None = None,
 ) -> dict[str, Any] | None:
     permission = "" if is_admin else "AND i.inspector_id = %s"
-    params = (inspection_id,) if is_admin else (inspection_id, user_id)
+    kind_filter = "AND image.kind = %s" if kind else ""
+    params: tuple[Any, ...] = (inspection_id,)
+    if not is_admin:
+        params += (user_id,)
+    if kind:
+        params += (kind,)
     row = fetch_query(
         f"""SELECT image.id, image.inspection_id AS inspectionId, image.storage_key AS storageKey,
                    image.original_name AS originalName, image.mime_type AS mimeType,
                    image.byte_size AS byteSize
             FROM inspections i
             JOIN inspection_images image ON image.inspection_id = i.id
-            WHERE i.id = %s AND i.deleted_at IS NULL {permission}
+            WHERE i.id = %s AND i.deleted_at IS NULL {permission} {kind_filter}
             ORDER BY image.kind = 'ANNOTATED' DESC, image.id DESC
             LIMIT 1""",
         params,

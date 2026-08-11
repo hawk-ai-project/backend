@@ -1,5 +1,10 @@
 """Private MinIO object storage operations."""
 
+import base64
+import binascii
+import hashlib
+from io import BytesIO
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -19,6 +24,39 @@ PROFILE_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024
 BOARD_IMAGE_TYPES = PROFILE_IMAGE_TYPES
 BOARD_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+
+
+def store_inspection_data_image(data_url: str, user_id: int, kind: str) -> dict:
+    content_type = "image/jpeg"
+    encoded = data_url
+    if data_url.startswith("data:"):
+        header, encoded = data_url.split(",", 1)
+        content_type = header[5:].split(";", 1)[0] or content_type
+    if content_type not in BOARD_IMAGE_TYPES:
+        raise HTTPException(status_code=415, detail="JPEG, PNG, WebP, GIF 이미지만 저장할 수 있습니다.")
+    try:
+        content = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise HTTPException(status_code=422, detail="이미지 데이터 형식이 올바르지 않습니다.") from exc
+    if not content or len(content) > BOARD_IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="이미지는 10MB 이하여야 합니다.")
+
+    extension = content_type.rsplit("/", 1)[-1].replace("jpeg", "jpg")
+    object_key = _object_key(user_id, f"inspection-{kind.lower()}.{extension}", "inspections")
+    try:
+        get_client().put_object(
+            settings.minio_bucket, object_key, BytesIO(content),
+            length=len(content), content_type=content_type,
+        )
+    except S3Error as exc:
+        raise HTTPException(status_code=502, detail="점검 이미지를 저장하지 못했습니다.") from exc
+    return {
+        "storageKey": object_key,
+        "originalName": f"inspection-{kind.lower()}.{extension}",
+        "mimeType": content_type,
+        "byteSize": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
 
 
 def get_client() -> Minio:
@@ -185,11 +223,12 @@ def copy_inspection_image_to_board(inspection_id: int, user: dict) -> dict:
     }
 
 
-def open_inspection_image(inspection_id: int, user: dict):
+def open_inspection_image(inspection_id: int, user: dict, kind: str | None = None):
     source = chat_repository.find_accessible_inspection_image(
         inspection_id,
         user["id"],
         user.get("role") == "ADMIN",
+        kind,
     )
     if source is None or source["mimeType"] not in BOARD_IMAGE_TYPES:
         raise HTTPException(status_code=404, detail="Inspection image not found.")

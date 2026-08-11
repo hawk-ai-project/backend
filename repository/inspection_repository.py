@@ -15,6 +15,38 @@ def find_active_assignees() -> list[dict[str, Any]]:
     return rows if isinstance(rows, list) else []
 
 
+def find_or_create_location(name: str, user_id: int) -> int:
+    existing = fetch_query(
+        "SELECT id FROM locations WHERE name = %s AND is_active = TRUE ORDER BY id LIMIT 1",
+        (name,), one=True,
+    )
+    if isinstance(existing, dict):
+        return int(existing["id"])
+    return execute_query(
+        "INSERT INTO locations (name, created_by) VALUES (%s, %s)",
+        (name, user_id),
+    )
+
+
+def create_inspection(location_id: int, user_id: int, title: str, notes: str | None) -> int:
+    return execute_query(
+        """INSERT INTO inspections
+        (location_id, inspector_id, title, notes, status, priority, captured_at)
+        VALUES (%s, %s, %s, %s, 'REVIEW_REQUIRED', 'MEDIUM', UTC_TIMESTAMP(6))""",
+        (location_id, user_id, title, notes),
+    )
+
+
+def create_inspection_image(inspection_id: int, kind: str, stored: dict[str, Any]) -> int:
+    return execute_query(
+        """INSERT INTO inspection_images
+        (inspection_id, kind, storage_key, original_name, mime_type, byte_size, sha256)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+        (inspection_id, kind, stored["storageKey"], stored["originalName"],
+         stored["mimeType"], stored["byteSize"], stored["sha256"]),
+    )
+
+
 def find_accessible_inspection(inspection_id: int, user_id: int, is_admin: bool) -> dict[str, Any] | None:
     permission = "" if is_admin else "AND i.inspector_id = %s"
     params = (inspection_id,) if is_admin else (inspection_id, user_id)

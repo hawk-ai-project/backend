@@ -8,6 +8,19 @@ from pydantic import BaseModel, Field
 class InspectionRequest(BaseModel):
     image: str
 
+
+class InspectionCreateRequest(BaseModel):
+    image: str
+    title: str = Field(min_length=1, max_length=200)
+    location: str = Field(min_length=1, max_length=150)
+    notes: str | None = None
+
+
+class InspectionCreateResponse(BaseModel):
+    inspectionId: int
+    message: str
+    detections: list["ObjectDetection"]
+
 # 백엔드에서 프론트엔드로
 class ObjectDetection(BaseModel):
     className: str
