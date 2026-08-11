@@ -5,7 +5,10 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
 from controller.auth_controller import current_auth
-from domain.inspection import InspectionHistoryItem, InspectionRequest, InspectionResponse
+from domain.inspection import (
+    InspectionAssignee, InspectionAssignmentRequest, InspectionAssignmentResponse,
+    InspectionHistoryItem, InspectionRequest, InspectionResponse,
+)
 from service import inspection_service
 
 router = APIRouter(prefix="/api/inspection", tags=["현장점검"])
@@ -17,6 +20,20 @@ def get_recent_inspection_history(
     auth=Depends(current_auth),
 ):
     return inspection_service.get_recent_history(auth[0], limit)
+
+
+@router.get("/assignees", response_model=list[InspectionAssignee])
+def get_inspection_assignees(_auth=Depends(current_auth)):
+    return inspection_service.get_assignees()
+
+
+@router.patch("/histories/{inspection_id}/assignee", response_model=InspectionAssignmentResponse)
+def assign_inspection(
+    inspection_id: int,
+    payload: InspectionAssignmentRequest,
+    auth=Depends(current_auth),
+):
+    return inspection_service.assign_history(inspection_id, payload.assigneeId, auth[0])
 
 
 @router.get("/histories/{inspection_id}/image")

@@ -33,3 +33,20 @@ class InspectionHistoryItem(BaseModel):
     wasteSummary: str
     detections: list[InspectionDetection]
     imageId: int | None = None
+    assigneeId: int | None = None
+    assigneeName: str | None = None
+
+
+class InspectionAssignee(BaseModel):
+    id: int
+    name: str
+    role: str
+
+
+class InspectionAssignmentRequest(BaseModel):
+    assigneeId: int
+
+
+class InspectionAssignmentResponse(BaseModel):
+    inspectionId: int
+    assignee: InspectionAssignee

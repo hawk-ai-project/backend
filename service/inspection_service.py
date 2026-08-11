@@ -2,8 +2,10 @@
 
 import json
 
+from fastapi import HTTPException, status
+
 from domain.inspection import InspectionRequest, InspectionResponse
-from repository import chat_repository
+from repository import chat_repository, inspection_repository
 from service import file_service
 
 def analyze_image(payload: InspectionRequest) -> InspectionResponse:
@@ -44,9 +46,33 @@ def get_recent_history(user: dict, limit: int) -> list[dict]:
             "wasteSummary": row["wasteSummary"],
             "detections": detections,
             "imageId": row.get("imageId"),
+            "assigneeId": row.get("assigneeId"),
+            "assigneeName": row.get("assigneeName"),
         })
     return result
 
 
 def get_history_image(inspection_id: int, user: dict):
     return file_service.open_inspection_image(inspection_id, user)
+
+
+def get_assignees() -> list[dict]:
+    return inspection_repository.find_active_assignees()
+
+
+def assign_history(inspection_id: int, assignee_id: int, user: dict) -> dict:
+    inspection = inspection_repository.find_accessible_inspection(
+        inspection_id, user["id"], user.get("role") == "ADMIN"
+    )
+    if not inspection:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="점검 이력을 찾을 수 없습니다.")
+
+    assignee = inspection_repository.find_active_user(assignee_id)
+    if not assignee:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="일반 사용자를 제외한 활성 계정만 담당자로 지정할 수 있습니다.",
+        )
+
+    inspection_repository.assign_inspection(inspection_id, assignee_id, user["id"])
+    return {"inspectionId": inspection_id, "assignee": assignee}

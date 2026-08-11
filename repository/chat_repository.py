@@ -55,7 +55,19 @@ def find_inspection_history(
                     FROM inspection_images image
                     WHERE image.inspection_id = i.id
                     ORDER BY image.kind = 'ANNOTATED' DESC, image.id DESC
-                    LIMIT 1) AS imageId
+                    LIMIT 1) AS imageId,
+                   (SELECT action.assignee_id
+                    FROM inspection_actions action
+                    WHERE action.inspection_id = i.id
+                      AND action.status <> 'CANCELLED'
+                      AND action.assignee_id IS NOT NULL
+                    ORDER BY action.id DESC LIMIT 1) AS assigneeId,
+                   (SELECT assignee.name
+                    FROM inspection_actions action
+                    JOIN users assignee ON assignee.id = action.assignee_id
+                    WHERE action.inspection_id = i.id
+                      AND action.status <> 'CANCELLED'
+                    ORDER BY action.id DESC LIMIT 1) AS assigneeName
             FROM inspections i
             LEFT JOIN locations l ON l.id = i.location_id
             JOIN users u ON u.id = i.inspector_id
