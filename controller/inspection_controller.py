@@ -24,7 +24,7 @@ def create_inspection(payload: InspectionCreateRequest, auth=Depends(current_aut
 
 @router.get("/histories", response_model=list[InspectionHistoryItem])
 def get_recent_inspection_history(
-    limit: int = Query(default=10, ge=1, le=10),
+    limit: int = Query(default=100, ge=1, le=1000),
     auth=Depends(current_auth),
 ):
     return inspection_service.get_recent_history(auth[0], limit)

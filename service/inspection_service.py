@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from client import ai_client
 from domain.inspection import InspectionCreateRequest, InspectionRequest, InspectionResponse, InspectionSaveRequest
 from repository import chat_repository, inspection_repository
-from service import ai_error_service, file_service
+from service import ai_error_service, file_service, geocoding_service
 
 
 def analyze_image(payload: InspectionRequest) -> InspectionResponse:
@@ -64,7 +64,14 @@ def create_inspection(payload: InspectionCreateRequest, user: dict) -> dict:
     if isinstance(annotated_data, str) and annotated_data:
         annotated = file_service.store_inspection_data_image(annotated_data, user["id"], "ANNOTATED")
 
-    location_id = inspection_repository.find_or_create_location(payload.location.strip(), user["id"])
+    latitude, longitude = payload.latitude, payload.longitude
+    if latitude is None or longitude is None:
+        resolved = geocoding_service.geocode(payload.location)
+        if resolved:
+            latitude, longitude = resolved
+    location_id = inspection_repository.find_or_create_location(
+        payload.location.strip(), user["id"], latitude, longitude,
+    )
     inspection_id = inspection_repository.create_inspection(
         location_id, user["id"], payload.title.strip(), payload.notes,
     )

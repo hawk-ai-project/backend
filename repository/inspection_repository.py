@@ -15,16 +15,23 @@ def find_active_assignees() -> list[dict[str, Any]]:
     return rows if isinstance(rows, list) else []
 
 
-def find_or_create_location(name: str, user_id: int) -> int:
+def find_or_create_location(
+    name: str, user_id: int, latitude: float | None = None, longitude: float | None = None,
+) -> int:
     existing = fetch_query(
         "SELECT id FROM locations WHERE name = %s AND is_active = TRUE ORDER BY id LIMIT 1",
         (name,), one=True,
     )
     if isinstance(existing, dict):
+        if latitude is not None and longitude is not None:
+            execute_query(
+                "UPDATE locations SET latitude = %s, longitude = %s WHERE id = %s",
+                (latitude, longitude, existing["id"]),
+            )
         return int(existing["id"])
     return execute_query(
-        "INSERT INTO locations (name, created_by) VALUES (%s, %s)",
-        (name, user_id),
+        "INSERT INTO locations (name, latitude, longitude, created_by) VALUES (%s, %s, %s, %s)",
+        (name, latitude, longitude, user_id),
     )
 
 
@@ -44,6 +51,13 @@ def create_inspection_image(inspection_id: int, kind: str, stored: dict[str, Any
         VALUES (%s, %s, %s, %s, %s, %s, %s)""",
         (inspection_id, kind, stored["storageKey"], stored["originalName"],
          stored["mimeType"], stored["byteSize"], stored["sha256"]),
+    )
+
+
+def update_location_coordinates(location_id: int, latitude: float, longitude: float) -> None:
+    execute_query(
+        "UPDATE locations SET latitude = %s, longitude = %s WHERE id = %s",
+        (latitude, longitude, location_id),
     )
 
 
