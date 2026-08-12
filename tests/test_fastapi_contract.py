@@ -10,3 +10,5 @@ def test_fastapi_import_and_existing_routes():
     assert "patch" in paths["/api/boards/{board_id}"]
     assert "delete" in paths["/api/boards/{board_id}"]
     assert "post" in paths["/api/auth/refresh"]
+    assert {"get", "post"} <= set(paths["/api/hokeytoon/{episode_id}/comments"])
+    assert {"patch", "delete"} <= set(paths["/api/hokeytoon/comments/{comment_id}"])

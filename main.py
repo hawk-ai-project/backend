@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from controller import admin_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, inspection_controller, menu_controller, question_controller
+from controller import admin_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller
 from service.auth_service import AuthError
 from service import activity_service
 
@@ -70,6 +70,7 @@ async def activity_monitoring(request: Request, call_next):
 # 라우터 등록
 app.include_router(question_controller.router)
 app.include_router(board_controller.router)
+app.include_router(hokeytoon_controller.router)
 app.include_router(menu_controller.router)
 app.include_router(auth_controller.router)
 app.include_router(admin_controller.router)
