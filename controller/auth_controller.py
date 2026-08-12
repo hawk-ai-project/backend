@@ -1,6 +1,6 @@
 """HTTP endpoints for signup, login, session lookup, and logout."""
 
-from fastapi import APIRouter, Depends, File, Header, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, Request, Response, UploadFile, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from domain.auth import AuthResponse, LoginRequest, MessageResponse, ProfileUpdateRequest, SignupRequest, UserResponse
@@ -17,18 +17,26 @@ def _bearer_token(authorization: str | None = Header(default=None)) -> str:
     return authorization[7:].strip()
 
 
-def current_auth(token: str = Depends(_bearer_token)):
-    return auth_service.authenticate(token)
+def current_auth(request: Request, token: str = Depends(_bearer_token)):
+    auth = auth_service.authenticate(token)
+    request.state.activity_user_id = auth[0]["id"]
+    request.state.activity_session_id = auth[1]["sid"]
+    return auth
 
 
 @router.post("/signup", response_model=UserResponse, status_code=201)
-def signup(payload: SignupRequest):
-    return auth_service.signup(payload.name, str(payload.email), payload.password)
+def signup(payload: SignupRequest, request: Request):
+    user = auth_service.signup(payload.name, str(payload.email), payload.password)
+    request.state.activity_user_id = user["id"]
+    return user
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(payload: LoginRequest):
-    return auth_service.login(str(payload.email), payload.password)
+def login(payload: LoginRequest, request: Request):
+    result = auth_service.login(str(payload.email), payload.password)
+    request.state.activity_user_id = result["user"]["id"]
+    request.state.activity_session_id = auth_service.decode_token(result["accessToken"])["sid"]
+    return result
 
 
 @router.get("/me", response_model=UserResponse)

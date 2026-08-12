@@ -14,6 +14,7 @@ pycparser==3.0
 pydantic==2.13.4
 pydantic_core==2.46.4
 PyMySQL==1.2.0
+psutil>=5.9,<8
 python-dotenv==1.2.2
 PyYAML==6.0.3
 pytest>=8,<9

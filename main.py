@@ -1,7 +1,11 @@
-from fastapi import FastAPI
+from time import perf_counter
+from uuid import UUID, uuid4
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from controller import admin_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, inspection_controller, menu_controller, question_controller
 from service.auth_service import AuthError
+from service import activity_service
 
 from fastapi.responses import HTMLResponse  # 추가됨
 
@@ -25,6 +29,41 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def activity_monitoring(request: Request, call_next):
+    """Record API activity without storing bodies, tokens, or query values."""
+    supplied_request_id = request.headers.get("X-Request-ID")
+    try:
+        request_id = str(UUID(supplied_request_id)) if supplied_request_id else str(uuid4())
+    except (ValueError, TypeError):
+        request_id = str(uuid4())
+    request.state.request_id = request_id
+    started = perf_counter()
+    status_code = 500
+    response = None
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        if request.url.path.startswith("/api"):
+            route = request.scope.get("route")
+            activity_service.record_http_request(
+                request_id=request_id,
+                method=request.method,
+                path=request.url.path,
+                route_template=getattr(route, "path", None),
+                status_code=status_code,
+                duration_ms=round((perf_counter() - started) * 1000),
+                user_id=getattr(request.state, "activity_user_id", None),
+                session_id=getattr(request.state, "activity_session_id", None),
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+                query_keys=sorted(set(request.query_params.keys())),
+            )
 
 # 라우터 등록
 app.include_router(question_controller.router)
