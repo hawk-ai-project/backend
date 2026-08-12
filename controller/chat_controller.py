@@ -17,4 +17,8 @@ def _optional_user(authorization: str | None) -> dict | None:
 
 @router.post("", response_model=ChatResponse)
 def chat(payload: ChatRequest, authorization: str | None = Header(default=None)):
-    return chat_service.chat(payload.message, _optional_user(authorization))
+    return chat_service.chat(
+        payload.message,
+        _optional_user(authorization),
+        [item.model_dump() for item in payload.history],
+    )

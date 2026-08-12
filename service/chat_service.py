@@ -31,6 +31,20 @@ ACTION_MAP = {
     "LOGIN": {"label": "로그인하기", "href": "/login"},
 }
 ALLOWED_ACTION_HREFS = {action["href"] for action in ACTION_MAP.values()}
+CASUAL_PATTERNS = (
+    r"^(안녕|안녕하세요|반가워|잘 자|잘자|고마워|감사해|미안해)[!?.~ ]*$",
+    r"(기분이|기분 어때|힘들었|힘들어|지쳤|외로워|심심해|속상해|우울해|신나|기뻐)",
+    r"(점심|저녁|아침|야식|메뉴|뭐 먹|먹을까|음식).*(추천|뭐|어때|좋아)",
+    r"(나는|내가).*(좋아해|싫어해|좋아한다고|싫어한다고)",
+    r"^(그럼|그러면) (다른|또 다른|다른 건|또 뭐).*$",
+    r"^너는 누구야[?!. ]*$",
+    r"^아까 내가 .*했지[?!. ]*$",
+    r"(오늘 날씨|최신 뉴스)",
+)
+SERVICE_TERMS = (
+    "hawk-ai", "프로젝트", "팀원", "담당", "기능", "게시판", "게시글",
+    "점검", "이력", "탐지", "yolo", "llm", "모델", "통계", "로그인",
+)
 
 
 def _load_json(name: str) -> Any:
@@ -49,7 +63,23 @@ def classify_intent(message: str) -> str:
         return "PROJECT_INFO"
     if any(keyword in normalized for keyword in DYNAMIC_HINTS):
         return "INSPECTION_HISTORY"
+    if _is_casual_chat(message):
+        return "CASUAL_CHAT"
     return "FAQ"
+
+
+def _is_casual_chat(message: str) -> bool:
+    normalized = " ".join(message.lower().split())
+    if any(term in normalized for term in SERVICE_TERMS):
+        return False
+    return any(re.search(pattern, normalized) for pattern in CASUAL_PATTERNS)
+
+
+def _is_navigation_request(message: str) -> bool:
+    normalized = message.lower()
+    return _message_action_key(message) is not None and any(
+        word in normalized for word in ("이동", "열어", "보여", "가줘", "화면", "페이지")
+    )
 
 
 def _extract_limit(message: str, default: int) -> int:
@@ -199,9 +229,13 @@ def _history_template(rows: list[dict]) -> str:
     return heading + "\n\n" + "\n\n".join(_history_block(row) for row in rows)
 
 
-def _generate(context: str, message: str) -> dict[str, Any]:
+def _generate(
+    context: str,
+    message: str,
+    history: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
     try:
-        return ai_client.generate_chat(context, message)
+        return ai_client.generate_chat(context, message, history=history)
     except ai_client.AIServerError as error:
         raise ai_error_service.to_http_exception(error) from error
 
@@ -289,7 +323,11 @@ def _result(
     }
 
 
-def chat(message: str, user: dict | None) -> dict:
+def chat(
+    message: str,
+    user: dict | None,
+    history: list[dict[str, str]] | None = None,
+) -> dict:
     started = perf_counter()
 
     query = _match_query_pattern(message)
@@ -326,10 +364,33 @@ def chat(message: str, user: dict | None) -> dict:
         answer = _project_template(message, _load_json("project_info.json"))
         return _result(answer, "PROJECT_INFO", "PROJECT_INFO", started)
 
+    if _is_navigation_request(message):
+        actions = _actions_for_keys(_message_action_key(message))
+        return _result(
+            actions[0]["label"] + " 화면으로 이동할 수 있습니다.",
+            "FAQ",
+            "STATIC_FAQ",
+            started,
+            actions=actions,
+            remote_intent="NAVIGATION",
+        )
+
     faqs = _load_json("faq.json")
     faq = _faq_exact(message, faqs)
     if faq:
         return _result(faq["answer"], "FAQ", "STATIC_FAQ", started, actions=_actions_for_keys(faq.get("action")))
+
+    if _is_casual_chat(message):
+        generated = _generate("", message, history or [])
+        return _result(
+            generated["answer"],
+            "CASUAL_CHAT",
+            "QWEN",
+            started,
+            remote_intent=generated.get("intent") or "CASUAL_CHAT",
+            remote_action=generated.get("action"),
+        )
+
     faq = _faq_keyword_match(message, faqs)
     if faq:
         return _result(faq["answer"], "FAQ", "STATIC_FAQ", started, actions=_actions_for_keys(faq.get("action")))

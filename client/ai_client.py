@@ -133,11 +133,12 @@ def generate_chat(
     context: str,
     message: str,
     *,
+    history: list[dict[str, str]] | None = None,
     transport: httpx.BaseTransport | None = None,
 ) -> dict[str, Any]:
     data = _post_json(
         "/api/ai/chat",
-        {"context": context, "message": message},
+        {"context": context, "message": message, "history": history or []},
         transport=transport,
     )
     answer = data.get("answer")
