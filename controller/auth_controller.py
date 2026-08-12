@@ -33,7 +33,11 @@ def signup(payload: SignupRequest, request: Request):
 
 @router.post("/login", response_model=AuthResponse)
 def login(payload: LoginRequest, request: Request):
-    result = auth_service.login(str(payload.email), payload.password)
+    result = auth_service.login(
+        str(payload.email), payload.password,
+        request.headers.get("user-agent"),
+        request.client.host if request.client else None,
+    )
     request.state.activity_user_id = result["user"]["id"]
     request.state.activity_session_id = auth_service.decode_token(result["accessToken"])["sid"]
     return result

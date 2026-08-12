@@ -134,3 +134,39 @@ class ActivityOverview(BaseModel):
     errorRate: float
     trend: list[ActivityTrendPoint]
     topActions: list[ActivityTopAction]
+
+
+class AdminSession(BaseModel):
+    id: str
+    userId: int
+    userName: str
+    userEmail: str
+    userRole: str
+    ipAddress: str | None = None
+    userAgent: str | None = None
+    status: Literal["ACTIVE", "EXPIRED", "REVOKED"]
+    createdAt: datetime
+    lastUsedAt: datetime | None = None
+    expiresAt: datetime
+    revokedAt: datetime | None = None
+
+
+class AdminSessionPage(BaseModel):
+    items: list[AdminSession]
+    page: int
+    pageSize: int
+    totalItems: int
+    totalPages: int
+
+
+class SecurityOverview(BaseModel):
+    activeSessions: int
+    activeUsers: int
+    expiringSoon: int
+    revoked24h: int
+    failedLogins24h: int
+    deniedRequests24h: int
+
+
+class RevokeSessionsRequest(BaseModel):
+    excludeCurrent: bool = True

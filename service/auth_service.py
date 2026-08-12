@@ -110,7 +110,12 @@ def signup(name: str, email: str, password: str) -> dict[str, Any]:
     return _public_user(user)
 
 
-def login(email: str, password: str) -> dict[str, Any]:
+def login(
+    email: str,
+    password: str,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
     user = auth_repository.find_user_by_email(email.strip().lower())
     if not user or not _verify_password(password, user["password_hash"]):
         raise AuthError("이메일 또는 비밀번호가 올바르지 않습니다.")
@@ -121,7 +126,11 @@ def login(email: str, password: str) -> dict[str, Any]:
         "session_expire_minutes", str(settings.access_token_expire_minutes)
     ))
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
-    auth_repository.create_session(session_id, user["id"], expires_at.replace(tzinfo=None))
+    auth_repository.create_session(
+        session_id, user["id"], expires_at.replace(tzinfo=None),
+        user_agent[:500] if user_agent else None,
+        ip_address[:45] if ip_address else None,
+    )
     auth_repository.touch_login(user["id"], session_id)
     return {"accessToken": _encode_token(user["id"], session_id, expires_at), "user": _public_user(user)}
 

@@ -154,3 +154,81 @@ def soft_delete_board(board_id: int) -> bool:
         (board_id,),
     )
     return affected > 0
+
+
+def security_overview() -> dict[str, Any]:
+    row = fetch_query(
+        """SELECT
+          (SELECT COUNT(*) FROM auth_sessions
+             WHERE revoked_at IS NULL AND expires_at > UTC_TIMESTAMP(6)) AS activeSessions,
+          (SELECT COUNT(DISTINCT user_id) FROM auth_sessions
+             WHERE revoked_at IS NULL AND expires_at > UTC_TIMESTAMP(6)) AS activeUsers,
+          (SELECT COUNT(*) FROM auth_sessions
+             WHERE revoked_at IS NULL AND expires_at > UTC_TIMESTAMP(6)
+               AND expires_at <= UTC_TIMESTAMP(6) + INTERVAL 1 HOUR) AS expiringSoon,
+          (SELECT COUNT(*) FROM auth_sessions
+             WHERE revoked_at >= UTC_TIMESTAMP(6) - INTERVAL 24 HOUR) AS revoked24h,
+          (SELECT COUNT(*) FROM activity_logs
+             WHERE occurred_at >= UTC_TIMESTAMP(6) - INTERVAL 24 HOUR
+               AND category = 'AUTH' AND action = 'LOGIN' AND outcome <> 'SUCCESS') AS failedLogins24h,
+          (SELECT COUNT(*) FROM activity_logs
+             WHERE occurred_at >= UTC_TIMESTAMP(6) - INTERVAL 24 HOUR
+               AND outcome = 'DENIED') AS deniedRequests24h""",
+        one=True,
+    )
+    return row if isinstance(row, dict) else {}
+
+
+def find_sessions(
+    page: int, page_size: int, keyword: str | None, session_status: str | None,
+) -> tuple[list[dict[str, Any]], int]:
+    status_expression = """CASE WHEN s.revoked_at IS NOT NULL THEN 'REVOKED'
+        WHEN s.expires_at <= UTC_TIMESTAMP(6) THEN 'EXPIRED' ELSE 'ACTIVE' END"""
+    where = "WHERE 1 = 1"
+    params: list[Any] = []
+    if keyword:
+        where += " AND (u.name LIKE %s OR u.email LIKE %s OR s.ip_address LIKE %s)"
+        pattern = f"%{keyword}%"
+        params.extend((pattern, pattern, pattern))
+    if session_status:
+        where += f" AND {status_expression} = %s"
+        params.append(session_status)
+    count = fetch_query(
+        f"""SELECT COUNT(*) AS total FROM auth_sessions s
+            JOIN users u ON u.id = s.user_id {where}""",
+        tuple(params), one=True,
+    )
+    rows = fetch_query(
+        f"""SELECT s.id, u.id AS userId, u.name AS userName, u.email AS userEmail,
+                   r.code AS userRole, s.ip_address AS ipAddress,
+                   s.user_agent AS userAgent, {status_expression} AS status,
+                   s.created_at AS createdAt, s.last_used_at AS lastUsedAt,
+                   s.expires_at AS expiresAt, s.revoked_at AS revokedAt
+            FROM auth_sessions s
+            JOIN users u ON u.id = s.user_id
+            JOIN roles r ON r.id = u.role_id
+            {where}
+            ORDER BY s.created_at DESC LIMIT %s OFFSET %s""",
+        (*params, page_size, (page - 1) * page_size),
+    )
+    total = int(count["total"]) if isinstance(count, dict) else 0
+    return (rows if isinstance(rows, list) else []), total
+
+
+def revoke_session_by_id(session_id: str) -> bool:
+    return execute_query(
+        """UPDATE auth_sessions SET revoked_at = UTC_TIMESTAMP(6)
+           WHERE id = %s AND revoked_at IS NULL AND expires_at > UTC_TIMESTAMP(6)""",
+        (session_id,),
+    ) > 0
+
+
+def revoke_all_sessions(exclude_session_id: str | None = None) -> int:
+    where = "WHERE revoked_at IS NULL AND expires_at > UTC_TIMESTAMP(6)"
+    params: tuple[Any, ...] = ()
+    if exclude_session_id:
+        where += " AND id <> %s"
+        params = (exclude_session_id,)
+    return execute_query(
+        f"UPDATE auth_sessions SET revoked_at = UTC_TIMESTAMP(6) {where}", params,
+    )

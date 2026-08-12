@@ -105,3 +105,28 @@ def change_board_status(board_id: int, status: str):
 def delete_board(board_id: int) -> None:
     if not admin_repository.soft_delete_board(board_id):
         raise AuthError("게시글을 찾을 수 없습니다.", 404)
+
+
+def get_security_overview():
+    return admin_repository.security_overview()
+
+
+def get_sessions(page: int, page_size: int, keyword: str | None, session_status: str | None):
+    items, total = admin_repository.find_sessions(page, page_size, keyword, session_status)
+    return {
+        "items": items, "page": page, "pageSize": page_size, "totalItems": total,
+        "totalPages": math.ceil(total / page_size) if total else 0,
+    }
+
+
+def revoke_session(session_id: str, current_session_id: str):
+    if session_id == current_session_id:
+        raise AuthError("현재 사용 중인 세션은 이 화면에서 종료할 수 없습니다.", 409)
+    if not admin_repository.revoke_session_by_id(session_id):
+        raise AuthError("활성 세션을 찾을 수 없습니다.", 404)
+    return {"message": "세션이 종료되었습니다."}
+
+
+def revoke_all_sessions(current_session_id: str, exclude_current: bool):
+    count = admin_repository.revoke_all_sessions(current_session_id if exclude_current else None)
+    return {"message": f"활성 세션 {count}개를 종료했습니다.", "revokedCount": count}

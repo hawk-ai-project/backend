@@ -50,10 +50,18 @@ def create_user(name: str, email: str, password_hash: str) -> int:
     )
 
 
-def create_session(session_id: str, user_id: int, expires_at: datetime) -> None:
+def create_session(
+    session_id: str,
+    user_id: int,
+    expires_at: datetime,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
+) -> None:
     execute_query(
-        "INSERT INTO auth_sessions (id, user_id, expires_at) VALUES (%s, %s, %s)",
-        (session_id, user_id, expires_at),
+        """INSERT INTO auth_sessions
+           (id, user_id, expires_at, user_agent, ip_address)
+           VALUES (%s, %s, %s, %s, %s)""",
+        (session_id, user_id, expires_at, user_agent, ip_address),
     )
 
 

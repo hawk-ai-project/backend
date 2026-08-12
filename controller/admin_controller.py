@@ -7,8 +7,9 @@ from fastapi.responses import StreamingResponse
 
 from controller.auth_controller import current_auth
 from domain.admin import (
-    ActivityLogPage, ActivityOverview, AdminBoardPage, AdminRole, AdminUserPage,
-    BoardStatusUpdateRequest, DashboardStats, RoleUpdateRequest,
+    ActivityLogPage, ActivityOverview, AdminBoardPage, AdminRole, AdminSessionPage,
+    AdminUserPage, BoardStatusUpdateRequest, DashboardStats, RevokeSessionsRequest,
+    RoleUpdateRequest, SecurityOverview,
 )
 from domain.auth import UserResponse
 from domain.settings import ServiceSettings
@@ -28,6 +29,39 @@ def current_admin(auth=Depends(current_auth)):
 @router.get("/dashboard", response_model=DashboardStats)
 def dashboard(_admin=Depends(current_admin)):
     return admin_service.get_dashboard()
+
+
+@router.get("/security/overview", response_model=SecurityOverview)
+def security_overview(_admin=Depends(current_admin)):
+    return admin_service.get_security_overview()
+
+
+@router.get("/security/sessions", response_model=AdminSessionPage)
+def security_sessions(
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+    keyword: str | None = Query(default=None, max_length=100),
+    sessionStatus: str | None = Query(default=None, alias="status", pattern="^(ACTIVE|EXPIRED|REVOKED)$"),
+    _admin=Depends(current_admin),
+):
+    return admin_service.get_sessions(
+        page, pageSize, keyword.strip() if keyword else None, sessionStatus,
+    )
+
+
+@router.delete("/security/sessions/{session_id}")
+def revoke_security_session(session_id: str, auth=Depends(current_auth)):
+    admin_service.require_admin(auth)
+    return admin_service.revoke_session(session_id, auth[1]["sid"])
+
+
+@router.post("/security/sessions/revoke-all")
+def revoke_all_security_sessions(
+    payload: RevokeSessionsRequest,
+    auth=Depends(current_auth),
+):
+    admin_service.require_admin(auth)
+    return admin_service.revoke_all_sessions(auth[1]["sid"], payload.excludeCurrent)
 
 
 @router.get("/activity/overview", response_model=ActivityOverview)
