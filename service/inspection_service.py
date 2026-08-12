@@ -53,10 +53,22 @@ def get_recent_history(user: dict, limit: int) -> list[dict]:
 
 
 def create_inspection(payload: InspectionCreateRequest, user: dict) -> dict:
+    return _create_inspection_with_image(payload, user)
+
+
+def _create_inspection_with_image(
+    payload: InspectionCreateRequest,
+    user: dict,
+    *,
+    status: str = "REVIEW_REQUIRED",
+) -> dict:
+    analysis_unavailable = False
     try:
         analysis = ai_client.detect_image(payload.image)
     except ai_client.AIServerError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
+        # Do not discard a field inspection just because AI is temporarily down.
+        analysis = {"detections": []}
+        analysis_unavailable = True
 
     original = file_service.store_inspection_data_image(payload.image, user["id"], "ORIGINAL")
     annotated_data = analysis.get("annotatedImage")
@@ -73,7 +85,11 @@ def create_inspection(payload: InspectionCreateRequest, user: dict) -> dict:
         payload.location.strip(), user["id"], latitude, longitude,
     )
     inspection_id = inspection_repository.create_inspection(
-        location_id, user["id"], payload.title.strip(), payload.notes,
+        location_id,
+        user["id"],
+        payload.title.strip(),
+        payload.notes,
+        "DRAFT" if analysis_unavailable else status,
     )
     inspection_repository.create_inspection_image(inspection_id, "ORIGINAL", original)
     if annotated:
@@ -127,7 +143,28 @@ def assign_history(inspection_id: int, assignee_id: int, user: dict) -> dict:
     return {"inspectionId": inspection_id, "assignee": assignee}
 
 
+def _parse_legacy_coordinates(coordinates: str) -> tuple[float | None, float | None]:
+    try:
+        latitude, longitude = (float(value.strip()) for value in coordinates.split(",", 1))
+    except (AttributeError, TypeError, ValueError):
+        return None, None
+    if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+        return None, None
+    return latitude, longitude
+
+
 def save_inspection(payload: InspectionSaveRequest, user: dict) -> dict:
+    latitude, longitude = _parse_legacy_coordinates(payload.coordinates)
+    request = InspectionCreateRequest(
+        image=payload.image,
+        title=payload.title,
+        location=payload.location_name,
+        notes=payload.notes,
+        latitude=latitude,
+        longitude=longitude,
+    )
+    return _create_inspection_with_image(request, user, status=payload.status)
+
     # AI 분석 결과 요약
     if payload.ai_detections:
         ai_opinion = ", ".join([f"{d.className} {int(d.confidence * 100)}%" for d in payload.ai_detections])

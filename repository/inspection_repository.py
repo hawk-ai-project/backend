@@ -35,12 +35,18 @@ def find_or_create_location(
     )
 
 
-def create_inspection(location_id: int, user_id: int, title: str, notes: str | None) -> int:
+def create_inspection(
+    location_id: int,
+    user_id: int,
+    title: str,
+    notes: str | None,
+    status: str = "REVIEW_REQUIRED",
+) -> int:
     return execute_query(
         """INSERT INTO inspections
         (location_id, inspector_id, title, notes, status, priority, captured_at)
-        VALUES (%s, %s, %s, %s, 'REVIEW_REQUIRED', 'MEDIUM', UTC_TIMESTAMP(6))""",
-        (location_id, user_id, title, notes),
+        VALUES (%s, %s, %s, %s, %s, 'MEDIUM', UTC_TIMESTAMP(6))""",
+        (location_id, user_id, title, notes, status),
     )
 
 
@@ -136,7 +142,7 @@ def insert_inspection_record(payload, user_id: int, ai_opinion: str):
     execute_query(
         """INSERT INTO locations 
         (name, latitude, longitude, is_active, created_by, created_at, updated_at)
-        VALUES (%s, %s, %s, 1, %s, UTC_TIMESTAMP(), UTC_TIMESTAMP())""",
+        VALUES (%s, %s, %s, 1, %s, NOW(), NOW())""",
         (payload.location_name, lat, lon, user_id)
     )
     
@@ -146,7 +152,7 @@ def insert_inspection_record(payload, user_id: int, ai_opinion: str):
         (location_id, inspector_id, title, notes, ai_opinion, status, priority, captured_at, created_at, updated_at)
         VALUES (
             (SELECT id FROM locations WHERE name = %s ORDER BY created_at DESC LIMIT 1), 
-            %s, %s, %s, %s, %s, 'MEDIUM', UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP()
+            %s, %s, %s, %s, %s, 'MEDIUM', NOW(), NOW(), NOW()
         )""",
         (payload.location_name, user_id, payload.title, payload.notes, ai_opinion, payload.status)
     )
