@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -73,3 +73,64 @@ class AdminBoardPage(BaseModel):
 
 class BoardStatusUpdateRequest(BaseModel):
     status: AdminBoardStatus
+
+
+ActivityOutcome = Literal["SUCCESS", "DENIED", "FAILURE"]
+ActivitySeverity = Literal["INFO", "WARNING", "ERROR"]
+
+
+class ActivityLog(BaseModel):
+    id: int
+    requestId: str
+    userId: int | None = None
+    userName: str | None = None
+    userEmail: str | None = None
+    category: str
+    action: str
+    httpMethod: str
+    path: str
+    routeTemplate: str | None = None
+    statusCode: int
+    outcome: ActivityOutcome
+    severity: ActivitySeverity
+    durationMs: int
+    ipAddress: str | None = None
+    userAgent: str | None = None
+    metadata: dict[str, Any] | None = None
+    occurredAt: datetime
+
+
+class ActivityLogPage(BaseModel):
+    items: list[ActivityLog]
+    page: int
+    pageSize: int
+    totalItems: int
+    totalPages: int
+
+
+class ActivityTrendPoint(BaseModel):
+    bucket: datetime
+    total: int
+    failures: int
+    denied: int
+    activeUsers: int
+
+
+class ActivityTopAction(BaseModel):
+    category: str
+    action: str
+    count: int
+    failures: int
+
+
+class ActivityOverview(BaseModel):
+    windowHours: int
+    totalEvents: int
+    activeUsers: int
+    failedEvents: int
+    deniedEvents: int
+    averageDurationMs: int
+    maxDurationMs: int
+    errorRate: float
+    trend: list[ActivityTrendPoint]
+    topActions: list[ActivityTopAction]

@@ -10,6 +10,12 @@ DEFAULTS = {
     "board_write_enabled": "true",
     "inspection_notification_enabled": "false",
     "session_expire_minutes": "30",
+    "monitor_cpu_threshold": "90",
+    "monitor_memory_threshold": "90",
+    "monitor_disk_threshold": "90",
+    "monitor_error_rate_threshold": "5",
+    "monitor_failed_login_threshold": "5",
+    "activity_log_retention_days": "180",
 }
 
 

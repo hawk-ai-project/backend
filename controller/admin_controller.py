@@ -1,16 +1,21 @@
 """Administrator-only HTTP endpoints."""
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import StreamingResponse
 
 from controller.auth_controller import current_auth
 from domain.admin import (
-    AdminBoardPage, AdminRole, AdminUserPage, BoardStatusUpdateRequest,
-    DashboardStats, RoleUpdateRequest,
+    ActivityLogPage, ActivityOverview, AdminBoardPage, AdminRole, AdminUserPage,
+    BoardStatusUpdateRequest, DashboardStats, RoleUpdateRequest,
 )
 from domain.auth import UserResponse
 from domain.settings import ServiceSettings
+from domain.monitoring import MonitoringOverview, MonitoringSettings
 from service import admin_service
+from service import activity_service
+from service import monitoring_service
 
 
 router = APIRouter(prefix="/api/admin", tags=["관리자"])
@@ -23,6 +28,50 @@ def current_admin(auth=Depends(current_auth)):
 @router.get("/dashboard", response_model=DashboardStats)
 def dashboard(_admin=Depends(current_admin)):
     return admin_service.get_dashboard()
+
+
+@router.get("/activity/overview", response_model=ActivityOverview)
+def activity_overview(
+    hours: int = Query(default=24, ge=1, le=168),
+    _admin=Depends(current_admin),
+):
+    return activity_service.get_overview(hours)
+
+
+@router.get("/activity", response_model=ActivityLogPage)
+def activity_logs(
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=30, ge=1, le=100),
+    fromAt: datetime | None = Query(default=None, alias="from"),
+    toAt: datetime | None = Query(default=None, alias="to"),
+    category: str | None = Query(default=None, max_length=30, pattern="^[A-Z_]+$"),
+    outcome: str | None = Query(default=None, pattern="^(SUCCESS|DENIED|FAILURE)$"),
+    userId: int | None = Query(default=None, ge=1),
+    keyword: str | None = Query(default=None, max_length=100),
+    _admin=Depends(current_admin),
+):
+    return activity_service.get_logs(
+        page, pageSize, fromAt, toAt, category, outcome, userId,
+        keyword.strip() if keyword else None,
+    )
+
+
+@router.get("/monitoring/overview", response_model=MonitoringOverview)
+def monitoring_overview(_admin=Depends(current_admin)):
+    return monitoring_service.get_overview()
+
+
+@router.get("/monitoring/settings", response_model=MonitoringSettings)
+def monitoring_settings(_admin=Depends(current_admin)):
+    return monitoring_service.get_settings()
+
+
+@router.put("/monitoring/settings", response_model=MonitoringSettings)
+def update_monitoring_settings(
+    payload: MonitoringSettings,
+    admin=Depends(current_admin),
+):
+    return monitoring_service.save_settings(payload, admin["id"])
 
 
 @router.get("/boards", response_model=AdminBoardPage)
