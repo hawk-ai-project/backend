@@ -24,6 +24,7 @@ class Settings:
     secret_key: str
     algorithm: str
     access_token_expire_minutes: int
+    refresh_cookie_secure: bool
     minio_endpoint: str
     minio_access_key: str
     minio_secret_key: str
@@ -61,6 +62,7 @@ def get_settings() -> Settings:
         secret_key=_required("SECRET_KEY"),
         algorithm=os.getenv("ALGORITHM", "HS256"),
         access_token_expire_minutes=parsed_expire_minutes,
+        refresh_cookie_secure=os.getenv("REFRESH_COOKIE_SECURE", "false").lower() in {"1", "true", "yes"},
         minio_endpoint=os.getenv("MINIO_ENDPOINT", "localhost:9000"),
         minio_access_key=os.getenv("MINIO_ACCESS_KEY", "hawk-backend"),
         minio_secret_key=os.getenv(

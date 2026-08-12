@@ -56,12 +56,13 @@ def create_session(
     expires_at: datetime,
     user_agent: str | None = None,
     ip_address: str | None = None,
+    refresh_token_hash: str | None = None,
 ) -> None:
     execute_query(
         """INSERT INTO auth_sessions
-           (id, user_id, expires_at, user_agent, ip_address)
-           VALUES (%s, %s, %s, %s, %s)""",
-        (session_id, user_id, expires_at, user_agent, ip_address),
+           (id, user_id, expires_at, user_agent, ip_address, refresh_token_hash)
+           VALUES (%s, %s, %s, %s, %s, %s)""",
+        (session_id, user_id, expires_at, user_agent, ip_address, refresh_token_hash),
     )
 
 
@@ -89,6 +90,53 @@ def revoke_session(session_id: str) -> None:
         "UPDATE auth_sessions SET revoked_at = UTC_TIMESTAMP(6) WHERE id = %s AND revoked_at IS NULL",
         (session_id,),
     )
+
+
+def rotate_refresh_token(
+    current_hash: str,
+    next_hash: str,
+    expires_at: datetime,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
+) -> dict[str, Any] | None:
+    """Atomically consume a refresh token so replayed tokens cannot be reused."""
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE auth_sessions
+                   SET refresh_token_hash = %s, expires_at = %s,
+                       last_used_at = UTC_TIMESTAMP(6),
+                       user_agent = COALESCE(%s, user_agent),
+                       ip_address = COALESCE(%s, ip_address)
+                   WHERE refresh_token_hash = %s AND revoked_at IS NULL
+                     AND expires_at > UTC_TIMESTAMP(6)""",
+                (next_hash, expires_at, user_agent, ip_address, current_hash),
+            )
+            if cursor.rowcount != 1:
+                connection.rollback()
+                return None
+            cursor.execute(
+                """SELECT s.id, s.user_id AS userId
+                   FROM auth_sessions s WHERE s.refresh_token_hash = %s""",
+                (next_hash,),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+        return {"id": row[0], "userId": row[1]} if row else None
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def revoke_by_refresh_hash(refresh_hash: str) -> bool:
+    return execute_query(
+        """UPDATE auth_sessions SET revoked_at = UTC_TIMESTAMP(6), refresh_token_hash = NULL
+           WHERE refresh_token_hash = %s AND revoked_at IS NULL""",
+        (refresh_hash,),
+    ) > 0
 
 
 def update_profile(

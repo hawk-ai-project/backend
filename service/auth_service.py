@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import uuid
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -61,6 +62,20 @@ def _encode_token(user_id: int, session_id: str, expires_at: datetime) -> str:
     unsigned = f"{header}.{payload}"
     signature = hmac.new(settings.secret_key.encode(), unsigned.encode(), hashlib.sha256).digest()
     return f"{unsigned}.{_b64encode(signature)}"
+
+
+def _new_refresh_token() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def _hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _access_token_lifetime(session_minutes: int) -> timedelta:
+    """Keep the access token shorter than the renewable server session."""
+    minutes = min(settings.access_token_expire_minutes, max(1, session_minutes // 2))
+    return timedelta(minutes=minutes)
 
 
 def decode_token(token: str) -> dict[str, Any]:
@@ -125,14 +140,59 @@ def login(
     expire_minutes = int(settings_repository.get_value(
         "session_expire_minutes", str(settings.access_token_expire_minutes)
     ))
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
+    now = datetime.now(timezone.utc)
+    access_expires_at = now + _access_token_lifetime(expire_minutes)
+    session_expires_at = now + timedelta(minutes=expire_minutes)
+    refresh_token = _new_refresh_token()
     auth_repository.create_session(
-        session_id, user["id"], expires_at.replace(tzinfo=None),
+        session_id, user["id"], session_expires_at.replace(tzinfo=None),
+        user_agent[:500] if user_agent else None,
+        ip_address[:45] if ip_address else None,
+        _hash_refresh_token(refresh_token),
+    )
+    auth_repository.touch_login(user["id"], session_id)
+    return {
+        "accessToken": _encode_token(user["id"], session_id, access_expires_at),
+        "refreshToken": refresh_token,
+        "refreshMaxAge": expire_minutes * 60,
+        "user": _public_user(user),
+    }
+
+
+def refresh(
+    refresh_token: str,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    next_token = _new_refresh_token()
+    session_minutes = int(settings_repository.get_value(
+        "session_expire_minutes", str(settings.access_token_expire_minutes)
+    ))
+    now = datetime.now(timezone.utc)
+    session = auth_repository.rotate_refresh_token(
+        _hash_refresh_token(refresh_token), _hash_refresh_token(next_token),
+        (now + timedelta(minutes=session_minutes)).replace(tzinfo=None),
         user_agent[:500] if user_agent else None,
         ip_address[:45] if ip_address else None,
     )
-    auth_repository.touch_login(user["id"], session_id)
-    return {"accessToken": _encode_token(user["id"], session_id, expires_at), "user": _public_user(user)}
+    if not session:
+        raise AuthError("로그인이 만료되었습니다.")
+    user = auth_repository.find_user_by_id(int(session["userId"]))
+    if not user or user["status"] != "ACTIVE":
+        auth_repository.revoke_session(session["id"])
+        raise AuthError("사용할 수 없는 계정입니다.", 403)
+    access_expires_at = now + _access_token_lifetime(session_minutes)
+    return {
+        "accessToken": _encode_token(user["id"], session["id"], access_expires_at),
+        "refreshToken": next_token,
+        "refreshMaxAge": session_minutes * 60,
+        "user": _public_user(user),
+    }
+
+
+def revoke_refresh_token(refresh_token: str | None) -> None:
+    if refresh_token:
+        auth_repository.revoke_by_refresh_hash(_hash_refresh_token(refresh_token))
 
 
 def authenticate(token: str) -> tuple[dict[str, Any], dict[str, Any]]:

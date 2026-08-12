@@ -1,6 +1,6 @@
 """HTTP endpoints for signup, login, session lookup, and logout."""
 
-from fastapi import APIRouter, Depends, File, Header, Request, Response, UploadFile, status
+from fastapi import APIRouter, Cookie, Depends, File, Header, Request, Response, UploadFile, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from domain.auth import AuthResponse, LoginRequest, MessageResponse, ProfileUpdateRequest, SignupRequest, UserResponse
@@ -9,6 +9,15 @@ from service import file_service
 
 
 router = APIRouter(prefix="/api/auth", tags=["인증"])
+REFRESH_COOKIE = "hawk_ai_refresh_token"
+
+
+def _set_refresh_cookie(response: Response, token: str, max_age: int) -> None:
+    response.set_cookie(
+        key=REFRESH_COOKIE, value=token, max_age=max_age,
+        httponly=True, secure=auth_service.settings.refresh_cookie_secure,
+        samesite="lax", path="/api/auth",
+    )
 
 
 def _bearer_token(authorization: str | None = Header(default=None)) -> str:
@@ -32,7 +41,7 @@ def signup(payload: SignupRequest, request: Request):
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(payload: LoginRequest, request: Request):
+def login(payload: LoginRequest, request: Request, response: Response):
     result = auth_service.login(
         str(payload.email), payload.password,
         request.headers.get("user-agent"),
@@ -40,6 +49,25 @@ def login(payload: LoginRequest, request: Request):
     )
     request.state.activity_user_id = result["user"]["id"]
     request.state.activity_session_id = auth_service.decode_token(result["accessToken"])["sid"]
+    _set_refresh_cookie(response, result.pop("refreshToken"), result.pop("refreshMaxAge"))
+    return result
+
+
+@router.post("/refresh", response_model=AuthResponse)
+def refresh_session(
+    request: Request,
+    response: Response,
+    refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE),
+):
+    if not refresh_token:
+        raise auth_service.AuthError("로그인이 만료되었습니다.")
+    result = auth_service.refresh(
+        refresh_token, request.headers.get("user-agent"),
+        request.client.host if request.client else None,
+    )
+    request.state.activity_user_id = result["user"]["id"]
+    request.state.activity_session_id = auth_service.decode_token(result["accessToken"])["sid"]
+    _set_refresh_cookie(response, result.pop("refreshToken"), result.pop("refreshMaxAge"))
     return result
 
 
@@ -91,8 +119,19 @@ def delete_profile_image(auth=Depends(current_auth)):
 
 
 @router.post("/logout", response_model=MessageResponse)
-def logout(auth=Depends(current_auth)):
-    auth_service.auth_repository.revoke_session(auth[1]["sid"])
+def logout(
+    response: Response,
+    authorization: str | None = Header(default=None),
+    refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE),
+):
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            claims = auth_service.decode_token(authorization[7:].strip())
+            auth_service.auth_repository.revoke_session(claims["sid"])
+        except auth_service.AuthError:
+            pass
+    auth_service.revoke_refresh_token(refresh_token)
+    response.delete_cookie(REFRESH_COOKIE, path="/api/auth")
     return {"message": "로그아웃되었습니다."}
 
 
