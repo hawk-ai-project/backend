@@ -10,7 +10,7 @@ from controller.auth_controller import current_auth
 from domain.inspection import (
     InspectionAssignee, InspectionAssignmentRequest, InspectionAssignmentResponse,
     InspectionCreateRequest, InspectionCreateResponse,
-    InspectionHistoryItem, InspectionRequest, InspectionResponse,
+    InspectionHistoryItem, InspectionRequest, InspectionResponse, InspectionSaveRequest
 )
 from service import inspection_service
 
@@ -65,3 +65,11 @@ def get_inspection_image(
 @router.post("/analyze", response_model=InspectionResponse)
 def analyze_inspection_image(payload: InspectionRequest):
     return inspection_service.analyze_image(payload)
+
+
+@router.post("/save")
+def save_inspection_record(
+    payload: InspectionSaveRequest,
+    auth=Depends(current_auth),
+):
+    return inspection_service.save_inspection(payload, auth[0])

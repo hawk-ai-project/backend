@@ -71,3 +71,13 @@ class InspectionAssignmentRequest(BaseModel):
 class InspectionAssignmentResponse(BaseModel):
     inspectionId: int
     assignee: InspectionAssignee
+
+
+class InspectionSaveRequest(BaseModel):
+    title: str
+    location_name: str
+    coordinates: str
+    notes: str | None = None
+    status: str
+    image: str
+    ai_detections: list[ObjectDetection]

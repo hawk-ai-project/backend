@@ -98,3 +98,31 @@ def assign_inspection(inspection_id: int, assignee_id: int, created_by: int) -> 
         VALUES (%s, %s, %s, 'COLLECTION_REQUEST', 'OPEN', '현장 수거 담당자 배정')""",
         (inspection_id, assignee_id, created_by),
     )
+
+
+def insert_inspection_record(payload, user_id: int, ai_opinion: str):
+    # 프론트엔드에서 보낸 "35.1587,129.1604" 형태의 문자열을 반으로 쪼개서 위도/경도 숫자로 만들기
+    lat, lon = 0.0, 0.0
+    if payload.coordinates and "," in payload.coordinates:
+        coords = payload.coordinates.split(",")
+        lat = float(coords[0].strip())
+        lon = float(coords[1].strip())
+
+    # locations에 새 장소 추가
+    execute_query(
+        """INSERT INTO locations 
+        (name, latitude, longitude, is_active, created_by, created_at, updated_at)
+        VALUES (%s, %s, %s, 1, %s, UTC_TIMESTAMP(), UTC_TIMESTAMP())""",
+        (payload.location_name, lat, lon, user_id)
+    )
+    
+    # inspections에 방금 만든 장소 번호(id)를 달아서 기록
+    execute_query(
+        """INSERT INTO inspections 
+        (location_id, inspector_id, title, notes, ai_opinion, status, priority, captured_at, created_at, updated_at)
+        VALUES (
+            (SELECT id FROM locations WHERE name = %s ORDER BY created_at DESC LIMIT 1), 
+            %s, %s, %s, %s, %s, 'MEDIUM', UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP()
+        )""",
+        (payload.location_name, user_id, payload.title, payload.notes, ai_opinion, payload.status)
+    )

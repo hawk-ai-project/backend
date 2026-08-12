@@ -3,7 +3,7 @@ import json
 from fastapi import HTTPException, status
 
 from client import ai_client
-from domain.inspection import InspectionCreateRequest, InspectionRequest, InspectionResponse
+from domain.inspection import InspectionCreateRequest, InspectionRequest, InspectionResponse, InspectionSaveRequest
 from repository import chat_repository, inspection_repository
 from service import ai_error_service, file_service
 
@@ -102,3 +102,16 @@ def assign_history(inspection_id: int, assignee_id: int, user: dict) -> dict:
 
     inspection_repository.assign_inspection(inspection_id, assignee_id, user["id"])
     return {"inspectionId": inspection_id, "assignee": assignee}
+
+
+def save_inspection(payload: InspectionSaveRequest, user: dict) -> dict:
+    # AI 분석 결과 요약
+    if payload.ai_detections:
+        ai_opinion = ", ".join([f"{d.className} {int(d.confidence * 100)}%" for d in payload.ai_detections])
+    else:
+        ai_opinion = "발견된 객체 없음"
+
+    # 2. DB 저장소 호출
+    inspection_repository.insert_inspection_record(payload, user["id"], ai_opinion)
+    
+    return {"message": "현장 점검 이력이 성공적으로 저장되었습니다."}
