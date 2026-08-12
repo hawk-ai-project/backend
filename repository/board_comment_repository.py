@@ -7,7 +7,7 @@ from common.db import execute_query, fetch_query
 
 _COMMENT_SELECT = """
 SELECT c.id, c.board_id AS boardId, c.parent_comment_id AS parentId,
-       c.content, c.emoticon, c.created_at AS createdAt, c.updated_at AS updatedAt,
+       c.content, c.emoticon, c.status, c.created_at AS createdAt, c.updated_at AS updatedAt,
        u.id AS authorId, u.name AS authorName, u.profile_file_id AS authorProfileFileId
 FROM board_comments c
 JOIN users u ON u.id = c.author_id
@@ -15,15 +15,23 @@ JOIN users u ON u.id = c.author_id
 
 
 def _to_comment(row: dict[str, Any]) -> dict[str, Any]:
+    hidden = row.pop("status", "ACTIVE") == "HIDDEN"
     profile_file_id = row.pop("authorProfileFileId", None)
     author_id = int(row.pop("authorId"))
-    row["author"] = {
-        "id": author_id,
-        "name": row.pop("authorName"),
-        "profileImageUrl": (
-            f"/api/boards/authors/{author_id}/profile-image" if profile_file_id else None
-        ),
-    }
+    author_name = row.pop("authorName")
+    row["isHidden"] = hidden
+    if hidden:
+        row["content"] = "관리자에 의해 숨김 처리된 댓글입니다."
+        row["emoticon"] = None
+        row["author"] = {"id": 0, "name": "관리자", "profileImageUrl": None}
+    else:
+        row["author"] = {
+            "id": author_id,
+            "name": author_name,
+            "profileImageUrl": (
+                f"/api/boards/authors/{author_id}/profile-image" if profile_file_id else None
+            ),
+        }
     row["replies"] = []
     return row
 
@@ -40,7 +48,7 @@ def board_exists(board_id: int) -> bool:
 def find_all(board_id: int) -> list[dict[str, Any]]:
     rows = fetch_query(
         f"""{_COMMENT_SELECT}
-        WHERE c.board_id = %s AND c.deleted_at IS NULL
+        WHERE c.board_id = %s AND c.deleted_at IS NULL AND c.status IN ('ACTIVE', 'HIDDEN')
         ORDER BY COALESCE(c.parent_comment_id, c.id) ASC, c.parent_comment_id IS NOT NULL ASC, c.created_at ASC, c.id ASC""",
         (board_id,),
     )
@@ -58,7 +66,7 @@ def find_all(board_id: int) -> list[dict[str, Any]]:
 
 def find_by_id(comment_id: int) -> dict[str, Any] | None:
     row = fetch_query(
-        f"{_COMMENT_SELECT} WHERE c.id = %s AND c.deleted_at IS NULL",
+        f"{_COMMENT_SELECT} WHERE c.id = %s AND c.deleted_at IS NULL AND c.status = 'ACTIVE'",
         (comment_id,),
         one=True,
     )
@@ -68,7 +76,7 @@ def find_by_id(comment_id: int) -> dict[str, Any] | None:
 def find_parent(board_id: int, parent_id: int) -> dict[str, Any] | None:
     return fetch_query(
         """SELECT id, parent_comment_id AS parentId FROM board_comments
-           WHERE id = %s AND board_id = %s AND deleted_at IS NULL""",
+           WHERE id = %s AND board_id = %s AND deleted_at IS NULL AND status = 'ACTIVE'""",
         (parent_id, board_id),
         one=True,
     )
@@ -86,14 +94,15 @@ def update(comment_id: int, data: dict[str, Any]) -> bool:
     return execute_query(
         """UPDATE board_comments
            SET content = %s, emoticon = %s, updated_at = UTC_TIMESTAMP(6)
-           WHERE id = %s AND deleted_at IS NULL""",
+           WHERE id = %s AND deleted_at IS NULL AND status = 'ACTIVE'""",
         (data.get("content", ""), data.get("emoticon"), comment_id),
     ) > 0
 
 
 def soft_delete(comment_id: int) -> bool:
     return execute_query(
-        """UPDATE board_comments SET deleted_at = UTC_TIMESTAMP(6), updated_at = UTC_TIMESTAMP(6)
-           WHERE id = %s AND deleted_at IS NULL""",
+        """UPDATE board_comments
+           SET status = 'DELETED', deleted_at = UTC_TIMESTAMP(6), updated_at = UTC_TIMESTAMP(6)
+           WHERE id = %s AND deleted_at IS NULL AND status = 'ACTIVE'""",
         (comment_id,),
     ) > 0

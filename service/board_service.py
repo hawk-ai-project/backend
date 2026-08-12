@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from client import ai_client
 from domain.board import BoardAIGenerateRequest, BoardCreate, BoardUpdate
 from repository import board_repository
-from service import ai_error_service, board_draft_service
+from service import ai_error_service, board_draft_service, forbidden_word_service
 
 
 _ai_jobs: dict[str, dict] = {}
@@ -61,6 +61,7 @@ def create_board(payload: BoardCreate, user: dict) -> dict:
     board = board_repository.find_by_id(board_id)
     if board is None:
         raise HTTPException(status_code=500, detail="생성된 게시글을 조회할 수 없습니다.")
+    forbidden_word_service.scan_content("BOARD", board_id, " ".join(filter(None, [board.get("title"), board.get("summary"), board.get("content")])))
     return board
 
 
@@ -79,6 +80,7 @@ def update_board(board_id: int, payload: BoardUpdate, user: dict) -> dict:
     board = board_repository.find_by_id(board_id)
     if board is None:
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
+    forbidden_word_service.scan_content("BOARD", board_id, " ".join(filter(None, [board.get("title"), board.get("summary"), board.get("content")])))
     return board
 
 

@@ -170,3 +170,81 @@ class SecurityOverview(BaseModel):
 
 class RevokeSessionsRequest(BaseModel):
     excludeCurrent: bool = True
+
+
+CommentStatus = Literal["ACTIVE", "HIDDEN", "DELETED"]
+CommentModerationAction = Literal["HIDE", "RESTORE", "DELETE"]
+
+
+class AdminComment(BaseModel):
+    id: int
+    boardId: int
+    boardTitle: str
+    parentId: int | None = None
+    parentContent: str | None = None
+    authorId: int
+    authorName: str
+    authorEmail: str
+    content: str
+    emoticon: str | None = None
+    status: CommentStatus
+    replyCount: int = 0
+    createdAt: datetime
+    updatedAt: datetime
+    deletedAt: datetime | None = None
+    moderatedBy: int | None = None
+    moderatorName: str | None = None
+    moderatedAt: datetime | None = None
+    moderationReason: str | None = None
+
+
+class AdminCommentPage(BaseModel):
+    items: list[AdminComment]
+    page: int
+    pageSize: int
+    totalItems: int
+    totalPages: int
+
+
+class CommentModerationRequest(BaseModel):
+    action: CommentModerationAction
+    reason: str = Field(min_length=2, max_length=500)
+
+
+class CommentModerationHistory(BaseModel):
+    id: int
+    action: CommentModerationAction
+    previousStatus: CommentStatus
+    nextStatus: CommentStatus
+    reason: str
+    createdAt: datetime
+    moderatorId: int | None = None
+    moderatorName: str | None = None
+
+
+class AuthorRecentComment(BaseModel):
+    id: int
+    boardId: int
+    boardTitle: str
+    content: str
+    status: CommentStatus
+    createdAt: datetime
+
+
+class AdminCommentDetail(BaseModel):
+    comment: dict[str, Any]
+    history: list[CommentModerationHistory]
+    authorRecentComments: list[AuthorRecentComment]
+
+
+class ForbiddenWordCreate(BaseModel):
+    word: str = Field(min_length=2, max_length=100)
+
+
+class ForbiddenWordToggle(BaseModel):
+    isActive: bool
+
+
+class ModerationFlagResolve(BaseModel):
+    status: Literal["RESOLVED", "DISMISSED"]
+    note: str = Field(default="", max_length=500)

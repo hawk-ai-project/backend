@@ -47,6 +47,7 @@ class BoardComment(BaseModel):
     parentId: int | None = None
     content: str
     emoticon: str | None = None
+    isHidden: bool = False
     author: BoardCommentAuthor
     createdAt: datetime
     updatedAt: datetime

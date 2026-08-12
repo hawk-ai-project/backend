@@ -348,6 +348,10 @@ CREATE TABLE IF NOT EXISTS board_comments (
     parent_comment_id   BIGINT UNSIGNED NULL COMMENT '대댓글이 답변하는 부모 댓글 식별자; NULL이면 최상위 댓글',
     content             TEXT NOT NULL COMMENT '댓글 본문',
     emoticon            VARCHAR(40) NULL COMMENT '이모티콘 파일 식별자',
+    status              ENUM('ACTIVE', 'HIDDEN', 'DELETED') NOT NULL DEFAULT 'ACTIVE' COMMENT '댓글 운영 상태',
+    moderated_by        BIGINT UNSIGNED NULL COMMENT '마지막 조치 관리자 식별자',
+    moderated_at        DATETIME(6) NULL COMMENT '마지막 관리자 조치 일시',
+    moderation_reason   VARCHAR(500) NULL COMMENT '마지막 관리자 조치 사유',
     created_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '댓글 생성 일시',
     updated_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '댓글 수정 일시',
     deleted_at          DATETIME(6) NULL COMMENT '소프트 삭제 일시',
@@ -355,12 +359,64 @@ CREATE TABLE IF NOT EXISTS board_comments (
     UNIQUE KEY uq_board_comments_board_id (board_id, id),
     KEY ix_board_comments_thread (board_id, parent_comment_id, deleted_at, created_at, id),
     KEY ix_board_comments_author (author_id, deleted_at, created_at DESC),
+    KEY ix_board_comments_moderation (status, created_at DESC),
     CONSTRAINT ck_board_comments_body CHECK (CHAR_LENGTH(TRIM(content)) > 0 OR emoticon IS NOT NULL),
     CONSTRAINT fk_board_comments_board FOREIGN KEY (board_id) REFERENCES boards (id) ON DELETE CASCADE,
     CONSTRAINT fk_board_comments_author FOREIGN KEY (author_id) REFERENCES users (id),
+    CONSTRAINT fk_board_comments_moderated_by FOREIGN KEY (moderated_by) REFERENCES users (id) ON DELETE SET NULL,
     CONSTRAINT fk_board_comments_parent FOREIGN KEY (board_id, parent_comment_id)
         REFERENCES board_comments (board_id, id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='게시글 댓글 및 대댓글 정보';
+
+CREATE TABLE IF NOT EXISTS comment_moderation_logs (
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '댓글 조치 이력 식별자',
+    comment_id      BIGINT UNSIGNED NOT NULL COMMENT '대상 댓글 식별자',
+    moderator_id    BIGINT UNSIGNED NULL COMMENT '조치 관리자 식별자',
+    action          ENUM('HIDE', 'RESTORE', 'DELETE') NOT NULL COMMENT '관리 조치',
+    previous_status ENUM('ACTIVE', 'HIDDEN', 'DELETED') NOT NULL COMMENT '조치 전 상태',
+    next_status     ENUM('ACTIVE', 'HIDDEN', 'DELETED') NOT NULL COMMENT '조치 후 상태',
+    reason          VARCHAR(500) NOT NULL COMMENT '관리자 조치 사유',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '조치 일시',
+    PRIMARY KEY (id),
+    KEY ix_comment_moderation_logs_comment (comment_id, created_at DESC),
+    KEY ix_comment_moderation_logs_moderator (moderator_id, created_at DESC),
+    CONSTRAINT fk_comment_moderation_logs_comment FOREIGN KEY (comment_id) REFERENCES board_comments (id) ON DELETE CASCADE,
+    CONSTRAINT fk_comment_moderation_logs_moderator FOREIGN KEY (moderator_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자 댓글 조치 감사 이력';
+
+CREATE TABLE IF NOT EXISTS forbidden_words (
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '금칙어 식별자',
+    word            VARCHAR(100) NOT NULL COMMENT '표시용 금칙어',
+    normalized_word VARCHAR(100) NOT NULL COMMENT '소문자 및 공백 제거된 중복 판정 값',
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE COMMENT '탐지 사용 여부',
+    created_by      BIGINT UNSIGNED NULL COMMENT '등록 관리자',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_forbidden_words_normalized (normalized_word),
+    KEY ix_forbidden_words_active (is_active, id),
+    CONSTRAINT fk_forbidden_words_created_by FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자 설정 금칙어';
+
+CREATE TABLE IF NOT EXISTS content_moderation_flags (
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '탐지 결과 식별자',
+    forbidden_word_id BIGINT UNSIGNED NOT NULL COMMENT '탐지된 금칙어',
+    content_type    ENUM('BOARD', 'COMMENT') NOT NULL COMMENT '콘텐츠 유형',
+    content_id      BIGINT UNSIGNED NOT NULL COMMENT '게시글 또는 댓글 식별자',
+    matched_text    VARCHAR(100) NOT NULL COMMENT '탐지된 문자열',
+    excerpt         VARCHAR(500) NOT NULL COMMENT '관리자 검토용 주변 문맥',
+    status          ENUM('OPEN', 'RESOLVED', 'DISMISSED') NOT NULL DEFAULT 'OPEN' COMMENT '검토 상태',
+    resolved_by     BIGINT UNSIGNED NULL COMMENT '처리 관리자',
+    resolved_at     DATETIME(6) NULL COMMENT '처리 일시',
+    resolution_note VARCHAR(500) NULL COMMENT '처리 메모',
+    detected_at     DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_content_moderation_flag (forbidden_word_id, content_type, content_id),
+    KEY ix_content_moderation_flags_status (status, detected_at DESC),
+    KEY ix_content_moderation_flags_content (content_type, content_id),
+    CONSTRAINT fk_content_flags_word FOREIGN KEY (forbidden_word_id) REFERENCES forbidden_words (id) ON DELETE CASCADE,
+    CONSTRAINT fk_content_flags_resolved_by FOREIGN KEY (resolved_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='게시글·댓글 금칙어 탐지 결과';
 
 -- ---------------------------------------------------------------------------
 -- 운영 감사 및 사용자 활동 모니터링

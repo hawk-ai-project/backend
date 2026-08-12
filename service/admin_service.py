@@ -4,6 +4,7 @@ import math
 
 from repository import admin_repository
 from repository import settings_repository
+from repository import comment_moderation_repository
 from service.auth_service import AuthError
 
 
@@ -130,3 +131,30 @@ def revoke_session(session_id: str, current_session_id: str):
 def revoke_all_sessions(current_session_id: str, exclude_current: bool):
     count = admin_repository.revoke_all_sessions(current_session_id if exclude_current else None)
     return {"message": f"활성 세션 {count}개를 종료했습니다.", "revokedCount": count}
+
+
+def get_comments(page, page_size, keyword, status, comment_type, board_id, author_id):
+    items, total = comment_moderation_repository.find_all(
+        page, page_size, keyword, status, comment_type, board_id, author_id,
+    )
+    return {"items": items, "page": page, "pageSize": page_size, "totalItems": total,
+            "totalPages": math.ceil(total / page_size) if total else 0}
+
+
+def get_comment_detail(comment_id: int):
+    comment = comment_moderation_repository.find_context(comment_id)
+    if not comment:
+        raise AuthError("댓글을 찾을 수 없습니다.", 404)
+    return {"comment": comment,
+            "history": comment_moderation_repository.find_history(comment_id),
+            "authorRecentComments": comment_moderation_repository.find_recent_by_author(
+                int(comment["authorId"]), comment_id)}
+
+
+def moderate_comment(comment_id: int, admin: dict, action: str, reason: str):
+    clean_reason = reason.strip()
+    if not clean_reason:
+        raise AuthError("조치 사유를 입력해 주세요.", 422)
+    if not comment_moderation_repository.moderate(comment_id, admin["id"], action, clean_reason):
+        raise AuthError("댓글을 찾을 수 없습니다.", 404)
+    return get_comment_detail(comment_id)

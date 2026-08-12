@@ -7,9 +7,11 @@ from fastapi.responses import StreamingResponse
 
 from controller.auth_controller import current_auth
 from domain.admin import (
-    ActivityLogPage, ActivityOverview, AdminBoardPage, AdminRole, AdminSessionPage,
-    AdminUserPage, BoardStatusUpdateRequest, DashboardStats, RevokeSessionsRequest,
-    RoleUpdateRequest, SecurityOverview,
+    ActivityLogPage, ActivityOverview, AdminBoardPage, AdminCommentDetail,
+    AdminCommentPage, AdminRole, AdminSessionPage, AdminUserPage,
+    BoardStatusUpdateRequest, CommentModerationRequest, DashboardStats,
+    ForbiddenWordCreate, ForbiddenWordToggle, ModerationFlagResolve,
+    RevokeSessionsRequest, RoleUpdateRequest, SecurityOverview,
 )
 from domain.auth import UserResponse
 from domain.settings import ServiceSettings
@@ -17,6 +19,7 @@ from domain.monitoring import MonitoringOverview, MonitoringSettings
 from service import admin_service
 from service import activity_service
 from service import monitoring_service
+from service import forbidden_word_service
 
 
 router = APIRouter(prefix="/api/admin", tags=["관리자"])
@@ -29,6 +32,62 @@ def current_admin(auth=Depends(current_auth)):
 @router.get("/dashboard", response_model=DashboardStats)
 def dashboard(_admin=Depends(current_admin)):
     return admin_service.get_dashboard()
+
+
+@router.get("/forbidden-words")
+def forbidden_words(_admin=Depends(current_admin)):
+    return forbidden_word_service.list_words()
+
+
+@router.post("/forbidden-words", status_code=201)
+def create_forbidden_word(payload: ForbiddenWordCreate, admin=Depends(current_admin)):
+    return forbidden_word_service.create_word(payload.word, admin["id"])
+
+
+@router.patch("/forbidden-words/{word_id}")
+def toggle_forbidden_word(word_id: int, payload: ForbiddenWordToggle, _admin=Depends(current_admin)):
+    return forbidden_word_service.toggle_word(word_id, payload.isActive)
+
+
+@router.delete("/forbidden-words/{word_id}", status_code=204)
+def delete_forbidden_word(word_id: int, _admin=Depends(current_admin)):
+    forbidden_word_service.delete_word(word_id)
+    return Response(status_code=204)
+
+
+@router.get("/moderation-flags")
+def moderation_flags(page:int=Query(1,ge=1),pageSize:int=Query(20,ge=1,le=100),
+    flagStatus:str|None=Query(None,alias="status",pattern="^(OPEN|RESOLVED|DISMISSED)$"),
+    contentType:str|None=Query(None,alias="type",pattern="^(BOARD|COMMENT)$"),_admin=Depends(current_admin)):
+    return forbidden_word_service.list_flags(page,pageSize,flagStatus,contentType)
+
+
+@router.post("/moderation-flags/{flag_id}/resolve")
+def resolve_moderation_flag(flag_id:int,payload:ModerationFlagResolve,admin=Depends(current_admin)):
+    return forbidden_word_service.resolve(flag_id,payload.status,payload.note,admin["id"])
+
+
+@router.get("/comments", response_model=AdminCommentPage)
+def comments(
+    page: int = Query(default=1, ge=1), pageSize: int = Query(default=20, ge=1, le=100),
+    keyword: str | None = Query(default=None, max_length=100),
+    statusFilter: str | None = Query(default=None, alias="status", pattern="^(ACTIVE|HIDDEN|DELETED)$"),
+    commentType: str | None = Query(default=None, alias="type", pattern="^(COMMENT|REPLY)$"),
+    boardId: int | None = Query(default=None, ge=1), authorId: int | None = Query(default=None, ge=1),
+    _admin=Depends(current_admin),
+):
+    return admin_service.get_comments(page, pageSize, keyword.strip() if keyword else None,
+                                      statusFilter, commentType, boardId, authorId)
+
+
+@router.get("/comments/{comment_id}", response_model=AdminCommentDetail)
+def comment_detail(comment_id: int, _admin=Depends(current_admin)):
+    return admin_service.get_comment_detail(comment_id)
+
+
+@router.post("/comments/{comment_id}/moderate", response_model=AdminCommentDetail)
+def moderate_comment(comment_id: int, payload: CommentModerationRequest, admin=Depends(current_admin)):
+    return admin_service.moderate_comment(comment_id, admin, payload.action, payload.reason)
 
 
 @router.get("/security/overview", response_model=SecurityOverview)

@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from domain.board import BoardCommentCreate, BoardCommentUpdate
 from repository import board_comment_repository
+from service import forbidden_word_service
 
 
 def list_comments(board_id: int) -> list[dict]:
@@ -25,6 +26,7 @@ def create_comment(board_id: int, payload: BoardCommentCreate, user: dict) -> di
     comment = board_comment_repository.find_by_id(comment_id)
     if comment is None:
         raise HTTPException(status_code=500, detail="작성한 댓글을 불러오지 못했습니다.")
+    forbidden_word_service.scan_content("COMMENT", comment_id, comment.get("content") or "")
     return comment
 
 
@@ -43,6 +45,7 @@ def update_comment(comment_id: int, payload: BoardCommentUpdate, user: dict) -> 
     comment = board_comment_repository.find_by_id(comment_id)
     if comment is None:
         raise HTTPException(status_code=404, detail="댓글을 찾을 수 없습니다.")
+    forbidden_word_service.scan_content("COMMENT", comment_id, comment.get("content") or "")
     return comment
 
 
