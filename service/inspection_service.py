@@ -89,6 +89,22 @@ def get_history_image(inspection_id: int, user: dict, kind: str | None = None):
     return file_service.open_inspection_image(inspection_id, user, kind)
 
 
+def delete_history(inspection_id: int, user: dict) -> None:
+    inspection = inspection_repository.find_accessible_inspection(
+        inspection_id, user["id"], user.get("role") == "ADMIN"
+    )
+    if not inspection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="삭제할 수 있는 점검 이력을 찾을 수 없습니다.",
+        )
+    if not inspection_repository.soft_delete_inspection(inspection_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="이미 삭제된 점검 이력입니다.",
+        )
+
+
 def get_assignees() -> list[dict]:
     return inspection_repository.find_active_assignees()
 

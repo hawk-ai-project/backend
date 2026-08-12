@@ -3,7 +3,7 @@
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
 
 from controller.auth_controller import current_auth
@@ -60,6 +60,14 @@ def get_inspection_image(
             stored_file.release_conn()
 
     return StreamingResponse(stream(), media_type=content_type)
+
+
+@router.delete("/histories/{inspection_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_inspection_history(
+    inspection_id: int,
+    auth=Depends(current_auth),
+):
+    inspection_service.delete_history(inspection_id, auth[0])
 
 
 @router.post("/analyze", response_model=InspectionResponse)

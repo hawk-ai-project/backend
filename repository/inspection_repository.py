@@ -74,6 +74,16 @@ def find_accessible_inspection(inspection_id: int, user_id: int, is_admin: bool)
     return row if isinstance(row, dict) else None
 
 
+def soft_delete_inspection(inspection_id: int) -> bool:
+    affected = execute_query(
+        """UPDATE inspections
+        SET deleted_at = UTC_TIMESTAMP(6), updated_at = UTC_TIMESTAMP(6)
+        WHERE id = %s AND deleted_at IS NULL""",
+        (inspection_id,),
+    )
+    return affected > 0
+
+
 def find_active_user(user_id: int) -> dict[str, Any] | None:
     row = fetch_query(
         """SELECT u.id, u.name, r.code AS role
