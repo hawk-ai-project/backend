@@ -55,6 +55,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 ORM이 스키마를 자동 생성하지 않으므로 서버 실행 전에 `sql/schema.sql`을 직접 적용해야 합니다.
 
+기존 데이터베이스의 댓글 테이블에 이모티콘 컬럼을 추가하려면 `sql/board_comments.sql` 마이그레이션을 적용합니다.
+
 ## Repository 작성 예
 
 ```python

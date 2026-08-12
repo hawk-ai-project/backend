@@ -7,15 +7,39 @@ from domain.board import (
     BoardAIGenerateRequest,
     BoardAIJob,
     BoardAIJobAccepted,
+    BoardComment,
+    BoardCommentCreate,
+    BoardCommentUpdate,
     BoardCreate,
     BoardPage,
     BoardUpdate,
 )
 from domain.file import BoardImageUploadResponse
-from service import board_service, file_service
+from service import board_comment_service, board_service, file_service
 
 
 router = APIRouter(prefix="/api/boards", tags=["게시판"])
+
+
+@router.get("/{board_id}/comments", response_model=list[BoardComment])
+def get_board_comments(board_id: int):
+    return board_comment_service.list_comments(board_id)
+
+
+@router.post("/{board_id}/comments", response_model=BoardComment, status_code=status.HTTP_201_CREATED)
+def create_board_comment(board_id: int, payload: BoardCommentCreate, auth=Depends(current_auth)):
+    return board_comment_service.create_comment(board_id, payload, auth[0])
+
+
+@router.patch("/comments/{comment_id}", response_model=BoardComment)
+def update_board_comment(comment_id: int, payload: BoardCommentUpdate, auth=Depends(current_auth)):
+    return board_comment_service.update_comment(comment_id, payload, auth[0])
+
+
+@router.delete("/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_board_comment(comment_id: int, auth=Depends(current_auth)):
+    board_comment_service.delete_comment(comment_id, auth[0])
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/images", response_model=BoardImageUploadResponse, status_code=status.HTTP_201_CREATED)
