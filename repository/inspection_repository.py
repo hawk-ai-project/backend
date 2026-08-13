@@ -1,4 +1,5 @@
 from typing import Any
+from datetime import datetime, timedelta;
 
 from common.db import execute_query, fetch_query
 
@@ -42,11 +43,15 @@ def create_inspection(
     notes: str | None,
     status: str = "REVIEW_REQUIRED",
 ) -> int:
+
+    kst_now = datetime.utcnow() + timedelta(hours=9)
+    formatted_time = kst_now.strftime('%Y-%m-%d %H:%M:%S')
+
     return execute_query(
         """INSERT INTO inspections
-        (location_id, inspector_id, title, notes, status, priority, captured_at)
-        VALUES (%s, %s, %s, %s, %s, 'MEDIUM', UTC_TIMESTAMP(6))""",
-        (location_id, user_id, title, notes, status),
+        (location_id, inspector_id, title, notes, status, priority, captured_at, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, 'MEDIUM', %s, %s, %s)""",
+        (location_id, user_id, title, notes, status, formatted_time, formatted_time, formatted_time),
     )
 
 
@@ -138,12 +143,17 @@ def insert_inspection_record(payload, user_id: int, ai_opinion: str):
         lat = float(coords[0].strip())
         lon = float(coords[1].strip())
 
+    kst_now = datetime.utcnow() + timedelta(hours=9)
+    formatted_time = kst_now.strftime('%Y-%m-%d %H:%M:%S')
+
+    print(f"🚀 [확인용] 파이썬이 만든 시간: {formatted_time}")
+
     # locations에 새 장소 추가
     execute_query(
         """INSERT INTO locations 
-        (name, latitude, longitude, is_active, created_by, created_at, updated_at)
-        VALUES (%s, %s, %s, 1, %s, NOW(), NOW())""",
-        (payload.location_name, lat, lon, user_id)
+        (name, address, latitude, longitude, is_active, created_by, created_at, updated_at)
+        VALUES (%s, %s, %s, 1, %s, %s, %s)""",
+        (payload.location_name, lat, lon, user_id, formatted_time, formatted_time)
     )
     
     # inspections에 방금 만든 장소 번호(id)를 달아서 기록
@@ -152,7 +162,7 @@ def insert_inspection_record(payload, user_id: int, ai_opinion: str):
         (location_id, inspector_id, title, notes, ai_opinion, status, priority, captured_at, created_at, updated_at)
         VALUES (
             (SELECT id FROM locations WHERE name = %s ORDER BY created_at DESC LIMIT 1), 
-            %s, %s, %s, %s, %s, 'MEDIUM', NOW(), NOW(), NOW()
+            %s, %s, %s, %s, %s, 'MEDIUM', %s, %s, %s
         )""",
-        (payload.location_name, user_id, payload.title, payload.notes, ai_opinion, payload.status)
+        (payload.location_name, user_id, payload.title, payload.notes, ai_opinion, payload.status, formatted_time, formatted_time, formatted_time)
     )
