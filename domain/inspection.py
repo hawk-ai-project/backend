@@ -30,6 +30,23 @@ class ObjectDetection(BaseModel):
     bbox: list[float]
 
 
+class DetectionReviewRequest(BaseModel):
+    result: str = Field(pattern="^(TRUE_POSITIVE|FALSE_POSITIVE|FALSE_NEGATIVE|UNREVIEWED)$")
+    actualClass: str | None = Field(default=None, max_length=100)
+    bbox: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    errorReason: str | None = Field(default=None, max_length=500)
+    reviewStatus: str = Field(default="REVIEWED", pattern="^(UNLABELED|LABELED|REVIEW_REQUIRED|REVIEWED|APPROVED|REJECTED)$")
+    retrainingCandidate: bool = False
+
+
+class MissedDetectionRequest(BaseModel):
+    inspectionId: int = Field(gt=0)
+    actualClass: str = Field(min_length=1, max_length=100)
+    bbox: list[float] = Field(min_length=4, max_length=4)
+    errorReason: str | None = Field(default=None, max_length=500)
+    retrainingCandidate: bool = True
+
+
 class InspectionResponse(BaseModel):
     message: str = "이미지 분석이 완료되었습니다."
     detections: list[ObjectDetection]

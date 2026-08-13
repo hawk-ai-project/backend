@@ -1,7 +1,8 @@
 from typing import Any
+import json
 from datetime import datetime, timedelta;
 
-from common.db import execute_query, fetch_query
+from common.db import engine, execute_query, fetch_query
 
 
 def find_active_assignees() -> list[dict[str, Any]]:
@@ -63,6 +64,63 @@ def create_inspection_image(inspection_id: int, kind: str, stored: dict[str, Any
         (inspection_id, kind, stored["storageKey"], stored["originalName"],
          stored["mimeType"], stored["byteSize"], stored["sha256"]),
     )
+
+
+def save_detection_result(
+    inspection_id: int,
+    source_image_id: int,
+    annotated_image_id: int | None,
+    analysis: dict[str, Any],
+) -> int:
+    """Persist one successful AI run and its normalized detections atomically."""
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO detection_runs
+                (inspection_id, source_image_id, annotated_image_id, model_name,
+                 model_version, status, inference_ms, raw_result, started_at, completed_at)
+                VALUES (%s, %s, %s, %s, %s, 'SUCCEEDED', %s, %s,
+                        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))""",
+                (
+                    inspection_id, source_image_id, annotated_image_id,
+                    str(analysis.get("modelName") or "marine-waste-detector")[:100],
+                    str(analysis.get("modelVersion") or "unknown")[:100],
+                    analysis.get("inferenceMs"),
+                    json.dumps(analysis, ensure_ascii=False),
+                ),
+            )
+            run_id = int(cursor.lastrowid)
+            for item in analysis.get("detections") or []:
+                bbox = item.get("bbox") or []
+                if len(bbox) != 4:
+                    continue
+                values = [float(value) for value in bbox]
+                if any(value < 0 or value > 1 for value in values):
+                    continue
+                class_name = str(item.get("className") or "UNKNOWN").strip()
+                class_code = class_name.upper().replace(" ", "_")[:50]
+                cursor.execute(
+                    """INSERT INTO waste_types (code, name_ko, name_en)
+                    VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)""",
+                    (class_code, class_name[:100], class_name[:100]),
+                )
+                waste_type_id = int(cursor.lastrowid)
+                cursor.execute(
+                    """INSERT INTO detections
+                    (detection_run_id, waste_type_id, confidence, bbox_x, bbox_y,
+                     bbox_width, bbox_height)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    (run_id, waste_type_id, float(item.get("confidence") or 0), *values),
+                )
+        connection.commit()
+        return run_id
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def update_location_coordinates(location_id: int, latitude: float, longitude: float) -> None:

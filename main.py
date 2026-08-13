@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from controller import admin_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller
+from controller import admin_controller, ai_management_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller
 from service.auth_service import AuthError
 from service import activity_service
 
@@ -74,6 +74,7 @@ app.include_router(hokeytoon_controller.router)
 app.include_router(menu_controller.router)
 app.include_router(auth_controller.router)
 app.include_router(admin_controller.router)
+app.include_router(ai_management_controller.router)
 app.include_router(file_controller.router)
 app.include_router(chat_controller.router)
 app.include_router(inspection_controller.router)

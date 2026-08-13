@@ -225,10 +225,18 @@ CREATE TABLE IF NOT EXISTS detections (
     bbox_y          DECIMAL(8, 7) NOT NULL COMMENT '0부터 1로 정규화된 바운딩 박스 좌상단 Y 좌표',
     bbox_width      DECIMAL(8, 7) NOT NULL COMMENT '0부터 1로 정규화된 바운딩 박스 너비',
     bbox_height     DECIMAL(8, 7) NOT NULL COMMENT '0부터 1로 정규화된 바운딩 박스 높이',
+    review_result   ENUM('UNREVIEWED','TRUE_POSITIVE','FALSE_POSITIVE','FALSE_NEGATIVE') NOT NULL DEFAULT 'UNREVIEWED' COMMENT '관리자 판정',
+    review_status   ENUM('UNLABELED','LABELED','REVIEW_REQUIRED','REVIEWED','APPROVED','REJECTED') NOT NULL DEFAULT 'REVIEW_REQUIRED' COMMENT 'Annotation 검수 상태',
+    actual_waste_type_id BIGINT UNSIGNED NULL COMMENT '관리자가 확정한 실제 클래스',
+    error_reason    VARCHAR(500) NULL COMMENT '오탐 또는 미탐 원인',
+    retraining_candidate BOOLEAN NOT NULL DEFAULT FALSE COMMENT '재학습 후보 여부',
+    reviewed_by     BIGINT UNSIGNED NULL COMMENT '검수 관리자',
+    reviewed_at     DATETIME(6) NULL COMMENT '검수 일시',
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '탐지 객체 생성 일시',
     PRIMARY KEY (id),
     KEY ix_detections_run_type (detection_run_id, waste_type_id),
     KEY ix_detections_type_created (waste_type_id, created_at),
+    KEY ix_detections_review (review_result, review_status, retraining_candidate),
     CONSTRAINT ck_detections_confidence CHECK (confidence BETWEEN 0 AND 1),
     CONSTRAINT ck_detections_bbox CHECK (
         bbox_x BETWEEN 0 AND 1 AND bbox_y BETWEEN 0 AND 1
@@ -238,7 +246,9 @@ CREATE TABLE IF NOT EXISTS detections (
         AND bbox_y + bbox_height <= 1.0000001
     ),
     CONSTRAINT fk_detections_run FOREIGN KEY (detection_run_id) REFERENCES detection_runs (id) ON DELETE CASCADE,
-    CONSTRAINT fk_detections_waste_type FOREIGN KEY (waste_type_id) REFERENCES waste_types (id)
+    CONSTRAINT fk_detections_waste_type FOREIGN KEY (waste_type_id) REFERENCES waste_types (id),
+    CONSTRAINT fk_detections_actual_type FOREIGN KEY (actual_waste_type_id) REFERENCES waste_types (id) ON DELETE SET NULL,
+    CONSTRAINT fk_detections_reviewer FOREIGN KEY (reviewed_by) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI 실행에서 탐지된 개별 객체 정보';
 
 -- 점검 처리 상태와 담당 이력을 별도로 남겨 감사 추적 및 처리시간 통계에 사용한다.

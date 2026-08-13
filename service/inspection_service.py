@@ -91,9 +91,14 @@ def _create_inspection_with_image(
         payload.notes,
         "DRAFT" if analysis_unavailable else status,
     )
-    inspection_repository.create_inspection_image(inspection_id, "ORIGINAL", original)
+    original_image_id = inspection_repository.create_inspection_image(inspection_id, "ORIGINAL", original)
+    annotated_image_id = None
     if annotated:
-        inspection_repository.create_inspection_image(inspection_id, "ANNOTATED", annotated)
+        annotated_image_id = inspection_repository.create_inspection_image(inspection_id, "ANNOTATED", annotated)
+    if not analysis_unavailable:
+        inspection_repository.save_detection_result(
+            inspection_id, original_image_id, annotated_image_id, analysis,
+        )
     return {
         "inspectionId": inspection_id,
         "message": "점검과 분석 이미지가 저장되었습니다.",
