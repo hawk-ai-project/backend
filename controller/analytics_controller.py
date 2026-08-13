@@ -17,7 +17,7 @@ def get_analytics_dashboard(
     try:
         return analytics_service.get_analytics_dashboard(startDate, endDate, locationId)
     except Exception as e:
-        traceback.print_exc()  # 터미널에 상세 에러 위치 및 원인 출력
+        # traceback.print_exc()  # 터미널에 상세 에러 위치 및 원인 출력
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"통계 데이터 처리 중 오류가 발생했습니다: {str(e)}"
