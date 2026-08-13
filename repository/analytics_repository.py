@@ -11,7 +11,7 @@ def get_analytics_summary(start_date: str, end_date: str, location_id: int | Non
 
     # 1. 점검 및 조치 상태 집계 (% -> %% 로 이스케이프 처리)
     summary_sql = """
-        SELECT 
+        SELECT /* get_analytics_summary.summary_sql */
             COUNT(DISTINCT i.id) AS total_inspections,
             COALESCE(SUM(CASE WHEN i.status = 'RESOLVED' THEN 1 ELSE 0 END), 0) AS resolved_count,
             DATEDIFF(%s, %s) + 1 AS total_days
@@ -37,7 +37,8 @@ def get_analytics_summary(start_date: str, end_date: str, location_id: int | Non
 
     # 2. 총 탐지 건수 집계
     detection_count_sql = """
-        SELECT COUNT(d.id) AS total_detections
+        SELECT /* get_analytics_summary.detection_count_sql */
+            COUNT(d.id) AS total_detections
         FROM detections d
         JOIN detection_runs dr ON d.detection_run_id = dr.id
         JOIN inspections i ON dr.inspection_id = i.id
@@ -57,7 +58,7 @@ def get_analytics_summary(start_date: str, end_date: str, location_id: int | Non
 
     # 3. 최다 탐지 항목 (Top Detected Waste Item)
     top_item_sql = """
-        SELECT 
+        SELECT /* get_analytics_summary.top_item_sql */
             wt.name_ko AS name,
             COUNT(d.id) AS count
         FROM detections d
@@ -105,7 +106,7 @@ def get_daily_trends(start_date: str, end_date: str, location_id: int | None = N
     end_ts = f"{end_date} 23:59:59"
 
     sql = """
-        SELECT 
+        SELECT /* get_daily_trends.sql */
             DATE_FORMAT(i.captured_at, '%%m/%%d') AS date,
             COUNT(d.id) AS count
         FROM inspections i
@@ -130,7 +131,7 @@ def get_waste_distribution(start_date: str, end_date: str, location_id: int | No
     end_ts = f"{end_date} 23:59:59"
 
     sql = """
-        SELECT 
+        SELECT /* get_waste_distribution.sql */
             wt.name_ko AS name,
             COUNT(d.id) AS count
         FROM detections d
@@ -164,7 +165,7 @@ def get_waste_distribution(start_date: str, end_date: str, location_id: int | No
 def get_all_regions() -> List[Dict[str, Any]]:
     """드롭다운 표시를 위한 전체 활성화 지역 목록을 조회합니다."""
     sql = """
-        SELECT 
+        SELECT /* get_all_regions.sql */
             r.id,
             r.name
         FROM regions r
