@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from controller.admin_controller import current_admin
-from domain.inspection import DetectionReviewRequest, MissedDetectionRequest
+from domain.inspection import DataBulkActionRequest, DataTagCreateRequest, DetectionReviewRequest, MissedDetectionRequest
 from service import ai_management_service
 
 
@@ -42,3 +42,40 @@ def statistics(_admin=Depends(current_admin)):
 @router.get("/classes")
 def classes(_admin=Depends(current_admin)):
     return ai_management_service.get_classes()
+
+
+@router.get("/data")
+def data_browser(
+    page:int=Query(1,ge=1),pageSize:int=Query(24,ge=1,le=100),
+    keyword:str|None=Query(None,max_length=100),className:str|None=Query(None,max_length=100),
+    tagIds:list[int]=Query(default=[]),result:str|None=Query(None),
+    reviewStatus:str|None=Query(None),retraining:bool|None=Query(None),
+    _admin=Depends(current_admin),
+):
+    return ai_management_service.browse_data(page,pageSize,keyword,className,tagIds,result,reviewStatus,retraining)
+
+
+@router.get("/tags")
+def tags(_admin=Depends(current_admin)):
+    return ai_management_service.get_tags()
+
+
+@router.post("/tags",status_code=201)
+def create_tag(payload:DataTagCreateRequest,admin=Depends(current_admin)):
+    return ai_management_service.create_tag(payload,admin["id"])
+
+
+@router.post("/data/bulk")
+def bulk_data(payload:DataBulkActionRequest,admin=Depends(current_admin)):
+    return ai_management_service.bulk_action(payload,admin["id"])
+
+
+@router.get("/data/{inspection_id}")
+def data_detail(inspection_id:int,_admin=Depends(current_admin)):
+    return ai_management_service.get_data_detail(inspection_id)
+
+
+@router.delete("/detections/{detection_id}",status_code=status.HTTP_204_NO_CONTENT)
+def delete_detection(detection_id:int,_admin=Depends(current_admin)):
+    ai_management_service.delete_annotation(detection_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -14,5 +14,10 @@ def test_fastapi_import_and_existing_routes():
     assert "patch" in paths["/api/admin/ai/detections/{detection_id}"]
     assert "post" in paths["/api/admin/ai/missed-detections"]
     assert "get" in paths["/api/admin/ai/statistics"]
+    assert "get" in paths["/api/admin/ai/data"]
+    assert "post" in paths["/api/admin/ai/data/bulk"]
+    assert {"get", "post"} <= set(paths["/api/admin/ai/tags"])
+    assert "get" in paths["/api/admin/ai/data/{inspection_id}"]
+    assert "delete" in paths["/api/admin/ai/detections/{detection_id}"]
     assert {"get", "post"} <= set(paths["/api/hokeytoon/{episode_id}/comments"])
     assert {"patch", "delete"} <= set(paths["/api/hokeytoon/comments/{comment_id}"])

@@ -251,6 +251,34 @@ CREATE TABLE IF NOT EXISTS detections (
     CONSTRAINT fk_detections_reviewer FOREIGN KEY (reviewed_by) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI 실행에서 탐지된 개별 객체 정보';
 
+CREATE TABLE IF NOT EXISTS data_tag_categories (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, code VARCHAR(50) NOT NULL,
+    name VARCHAR(100) NOT NULL, description VARCHAR(500) NULL,
+    created_by BIGINT UNSIGNED NULL, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id), UNIQUE KEY uq_data_tag_categories_code (code),
+    CONSTRAINT fk_data_tag_category_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI 데이터 태그 카테고리';
+
+CREATE TABLE IF NOT EXISTS data_tags (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, category_id BIGINT UNSIGNED NOT NULL,
+    name VARCHAR(100) NOT NULL, normalized_name VARCHAR(100) NOT NULL,
+    description VARCHAR(500) NULL, created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id), UNIQUE KEY uq_data_tags_name (normalized_name),
+    KEY ix_data_tags_category (category_id, name),
+    CONSTRAINT fk_data_tags_category FOREIGN KEY (category_id) REFERENCES data_tag_categories(id),
+    CONSTRAINT fk_data_tags_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI 학습 데이터 태그';
+
+CREATE TABLE IF NOT EXISTS inspection_data_tags (
+    inspection_id BIGINT UNSIGNED NOT NULL, tag_id BIGINT UNSIGNED NOT NULL,
+    created_by BIGINT UNSIGNED NULL, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (inspection_id, tag_id), KEY ix_inspection_data_tags_tag (tag_id, inspection_id),
+    CONSTRAINT fk_inspection_data_tags_inspection FOREIGN KEY (inspection_id) REFERENCES inspections(id) ON DELETE CASCADE,
+    CONSTRAINT fk_inspection_data_tags_tag FOREIGN KEY (tag_id) REFERENCES data_tags(id) ON DELETE CASCADE,
+    CONSTRAINT fk_inspection_data_tags_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='점검 이미지와 AI 데이터 태그 연결';
+
 -- 점검 처리 상태와 담당 이력을 별도로 남겨 감사 추적 및 처리시간 통계에 사용한다.
 CREATE TABLE IF NOT EXISTS inspection_actions (
     id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '점검 후속 조치 고유 식별자',

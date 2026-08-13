@@ -47,6 +47,18 @@ class MissedDetectionRequest(BaseModel):
     retrainingCandidate: bool = True
 
 
+class DataTagCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    categoryCode: str = Field(min_length=1, max_length=50)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class DataBulkActionRequest(BaseModel):
+    inspectionIds: list[int] = Field(min_length=1, max_length=500)
+    action: str = Field(pattern="^(ADD_TAG|REMOVE_TAG|RETRAIN|APPROVE|REJECT|HARD_EXAMPLE)$")
+    tagIds: list[int] = Field(default_factory=list, max_length=100)
+
+
 class InspectionResponse(BaseModel):
     message: str = "이미지 분석이 완료되었습니다."
     detections: list[ObjectDetection]

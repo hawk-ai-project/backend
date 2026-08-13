@@ -48,3 +48,38 @@ def get_statistics():
 
 def get_classes():
     return repository.find_waste_types()
+
+
+def browse_data(page,page_size,keyword,class_name,tag_ids,result,review_status,retraining):
+    items,total=repository.find_data_items(page,page_size,keyword,class_name,tag_ids,result,review_status,retraining)
+    return {"items":items,"page":page,"pageSize":page_size,"totalItems":total,
+            "totalPages":math.ceil(total/page_size) if total else 0}
+
+
+def get_tags():
+    return repository.list_data_tags()
+
+
+def create_tag(payload,admin_id):
+    tag_id=repository.create_data_tag(payload.name,payload.categoryCode,payload.description,admin_id)
+    if not tag_id:
+        raise HTTPException(404,"Tag category not found.")
+    return next((tag for tag in repository.list_data_tags() if tag["id"]==tag_id),{"id":tag_id})
+
+
+def bulk_action(payload,admin_id):
+    unique_ids=list(dict.fromkeys(payload.inspectionIds))
+    affected=repository.bulk_data_action(unique_ids,payload.action,payload.tagIds,admin_id)
+    return {"message":"Bulk action completed.","selectedCount":len(unique_ids),"affectedCount":affected}
+
+
+def get_data_detail(inspection_id):
+    detail=repository.find_data_detail(inspection_id)
+    if not detail:
+        raise HTTPException(404,"Data item not found.")
+    return detail
+
+
+def delete_annotation(detection_id):
+    if not repository.delete_detection(detection_id):
+        raise HTTPException(404,"Annotation not found.")

@@ -128,3 +128,146 @@ def statistics() -> dict[str, Any]:
         ORDER BY count DESC LIMIT 10"""
     )
     return {**totals, "classDistribution": classes or []}
+
+
+def find_data_items(page: int, page_size: int, keyword: str | None,
+                    class_name: str | None, tag_ids: list[int],
+                    result: str | None, review_status: str | None,
+                    retraining: bool | None):
+    clauses, params = ["i.deleted_at IS NULL", "r.status='SUCCEEDED'"], []
+    if keyword:
+        clauses.append("(i.title LIKE %s OR l.name LIKE %s)")
+        term=f"%{keyword}%"; params.extend([term,term])
+    if class_name:
+        clauses.append("EXISTS (SELECT 1 FROM detections dx JOIN waste_types wx ON wx.id=dx.waste_type_id WHERE dx.detection_run_id=r.id AND wx.name_ko=%s)")
+        params.append(class_name)
+    if result:
+        clauses.append("EXISTS (SELECT 1 FROM detections dx WHERE dx.detection_run_id=r.id AND dx.review_result=%s)")
+        params.append(result)
+    if review_status:
+        clauses.append("EXISTS (SELECT 1 FROM detections dx WHERE dx.detection_run_id=r.id AND dx.review_status=%s)")
+        params.append(review_status)
+    if retraining is not None:
+        clauses.append("EXISTS (SELECT 1 FROM detections dx WHERE dx.detection_run_id=r.id AND dx.retraining_candidate=%s)")
+        params.append(retraining)
+    for tag_id in tag_ids:
+        clauses.append("EXISTS (SELECT 1 FROM inspection_data_tags itx WHERE itx.inspection_id=i.id AND itx.tag_id=%s)")
+        params.append(tag_id)
+    where=" AND ".join(clauses)
+    count=fetch_query(
+        f"""SELECT COUNT(*) total FROM inspections i LEFT JOIN locations l ON l.id=i.location_id
+        JOIN detection_runs r ON r.id=(SELECT rr.id FROM detection_runs rr WHERE rr.inspection_id=i.id AND rr.status='SUCCEEDED' ORDER BY rr.created_at DESC LIMIT 1)
+        WHERE {where}""", tuple(params), one=True,
+    )
+    rows=fetch_query(
+        f"""SELECT i.id AS inspectionId,i.title,l.name AS location,i.captured_at AS capturedAt,
+        r.model_name AS modelName,r.model_version AS modelVersion,r.source_image_id AS imageId,
+        (SELECT COUNT(*) FROM detections d WHERE d.detection_run_id=r.id) AS detectionCount,
+        (SELECT ROUND(MAX(d.confidence),4) FROM detections d WHERE d.detection_run_id=r.id) AS maxConfidence,
+        (SELECT GROUP_CONCAT(DISTINCT wt.name_ko ORDER BY wt.name_ko SEPARATOR ', ')
+         FROM detections d JOIN waste_types wt ON wt.id=d.waste_type_id WHERE d.detection_run_id=r.id) AS classes,
+        (SELECT GROUP_CONCAT(DISTINCT dt.name ORDER BY dt.name SEPARATOR ',')
+         FROM inspection_data_tags idt JOIN data_tags dt ON dt.id=idt.tag_id WHERE idt.inspection_id=i.id) AS tags,
+        (SELECT COUNT(*) FROM detections d WHERE d.detection_run_id=r.id AND d.retraining_candidate=TRUE)>0 AS retrainingCandidate,
+        (SELECT COUNT(*) FROM detections d WHERE d.detection_run_id=r.id AND d.review_status='APPROVED')=
+        (SELECT COUNT(*) FROM detections d WHERE d.detection_run_id=r.id) AS approved
+        FROM inspections i LEFT JOIN locations l ON l.id=i.location_id
+        JOIN detection_runs r ON r.id=(SELECT rr.id FROM detection_runs rr WHERE rr.inspection_id=i.id AND rr.status='SUCCEEDED' ORDER BY rr.created_at DESC LIMIT 1)
+        WHERE {where} ORDER BY i.captured_at DESC,i.id DESC LIMIT %s OFFSET %s""",
+        tuple(params+[page_size,(page-1)*page_size]),
+    )
+    items=rows if isinstance(rows,list) else []
+    for item in items:
+        item["tags"]=item["tags"].split(",") if item.get("tags") else []
+    return items,int(count["total"]) if count else 0
+
+
+def find_data_detail(inspection_id: int):
+    inspection=fetch_query(
+        """SELECT i.id AS inspectionId,i.title,l.name AS location,i.captured_at AS capturedAt,
+        r.id AS runId,r.model_name AS modelName,r.model_version AS modelVersion
+        FROM inspections i LEFT JOIN locations l ON l.id=i.location_id
+        JOIN detection_runs r ON r.id=(SELECT rr.id FROM detection_runs rr
+          WHERE rr.inspection_id=i.id AND rr.status='SUCCEEDED' ORDER BY rr.created_at DESC LIMIT 1)
+        WHERE i.id=%s AND i.deleted_at IS NULL""",(inspection_id,),one=True,
+    )
+    if not isinstance(inspection,dict):
+        return None
+    detections=fetch_query(BASE_SELECT+" WHERE r.id=%s ORDER BY d.id",(inspection["runId"],))
+    tags=fetch_query(
+        """SELECT t.id,t.name,c.code AS categoryCode FROM inspection_data_tags it
+        JOIN data_tags t ON t.id=it.tag_id JOIN data_tag_categories c ON c.id=t.category_id
+        WHERE it.inspection_id=%s ORDER BY c.code,t.name""",(inspection_id,),
+    )
+    inspection["detections"]=detections if isinstance(detections,list) else []
+    inspection["tags"]=tags if isinstance(tags,list) else []
+    return inspection
+
+
+def delete_detection(detection_id: int) -> bool:
+    return execute_query("DELETE FROM detections WHERE id=%s",(detection_id,))>0
+
+
+def list_data_tags():
+    rows=fetch_query(
+        """SELECT t.id,t.name,t.description,c.code AS categoryCode,c.name AS categoryName,
+        COUNT(idt.inspection_id) AS usageCount,t.created_at AS createdAt
+        FROM data_tags t JOIN data_tag_categories c ON c.id=t.category_id
+        LEFT JOIN inspection_data_tags idt ON idt.tag_id=t.id
+        GROUP BY t.id,t.name,t.description,c.code,c.name,t.created_at
+        ORDER BY c.name,t.name"""
+    )
+    return rows if isinstance(rows,list) else []
+
+
+def create_data_tag(name: str, category_code: str, description: str | None, admin_id: int):
+    normalized="-".join(name.strip().lower().split())
+    category=fetch_query("SELECT id FROM data_tag_categories WHERE code=%s",(category_code,),one=True)
+    if not category:
+        return 0
+    return execute_query(
+        """INSERT INTO data_tags(category_id,name,normalized_name,description,created_by)
+        VALUES(%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),
+        description=VALUES(description)""",
+        (category["id"],name.strip(),normalized,description,admin_id),
+    )
+
+
+def bulk_data_action(inspection_ids: list[int], action: str, tag_ids: list[int], admin_id: int) -> int:
+    connection=engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            placeholders=",".join(["%s"]*len(inspection_ids))
+            if action in {"ADD_TAG","HARD_EXAMPLE"}:
+                selected_tags=tag_ids
+                if action=="HARD_EXAMPLE":
+                    cursor.execute("SELECT id FROM data_tags WHERE normalized_name='hard-example'")
+                    row=cursor.fetchone(); selected_tags=[row[0]] if row else []
+                for inspection_id in inspection_ids:
+                    for tag_id in selected_tags:
+                        cursor.execute(
+                            """INSERT IGNORE INTO inspection_data_tags(inspection_id,tag_id,created_by)
+                            VALUES(%s,%s,%s)""",(inspection_id,tag_id,admin_id),
+                        )
+            elif action=="REMOVE_TAG" and tag_ids:
+                tag_placeholders=",".join(["%s"]*len(tag_ids))
+                cursor.execute(f"DELETE FROM inspection_data_tags WHERE inspection_id IN ({placeholders}) AND tag_id IN ({tag_placeholders})",tuple(inspection_ids+tag_ids))
+            if action in {"RETRAIN","HARD_EXAMPLE","APPROVE","REJECT"}:
+                assignments={
+                    "RETRAIN":"d.retraining_candidate=TRUE",
+                    "HARD_EXAMPLE":"d.retraining_candidate=TRUE",
+                    "APPROVE":"d.review_status='APPROVED',d.reviewed_by=%s,d.reviewed_at=UTC_TIMESTAMP(6)",
+                    "REJECT":"d.review_status='REJECTED',d.reviewed_by=%s,d.reviewed_at=UTC_TIMESTAMP(6)",
+                }
+                prefix_params=[admin_id] if action in {"APPROVE","REJECT"} else []
+                cursor.execute(
+                    f"""UPDATE detections d JOIN detection_runs r ON r.id=d.detection_run_id
+                    SET {assignments[action]} WHERE r.inspection_id IN ({placeholders})""",
+                    tuple(prefix_params+inspection_ids),
+                )
+            affected=cursor.rowcount
+        connection.commit(); return affected
+    except Exception:
+        connection.rollback(); raise
+    finally:
+        connection.close()
