@@ -5,29 +5,26 @@ from common.db import fetch_query
 def get_analytics_summary(start_date: str, end_date: str, location_id: int | None = None) -> Dict[str, Any]:
     """
     지정된 기간 및 장소에 따른 KPI 통계 요약을 산출합니다.
-    - 총 점검 건수 (totalInspections)
-    - 일평균 점검 건수 (dailyAvgInspections)
-    - 총 탐지된 폐기물 개수 (totalDetections)
-    - 조치 완료율 (resolutionRate)
-    - 가장 많이 탐지된 폐기물 항목 (topDetectedItem)
     """
     start_ts = f"{start_date} 00:00:00"
     end_ts = f"{end_date} 23:59:59"
 
-    # 1. 점검 및 조치 상태 집계
+    # 1. 점검 및 조치 상태 집계 (% -> %% 로 이스케이프 처리)
     summary_sql = """
         SELECT 
             COUNT(DISTINCT i.id) AS total_inspections,
             COALESCE(SUM(CASE WHEN i.status = 'RESOLVED' THEN 1 ELSE 0 END), 0) AS resolved_count,
             DATEDIFF(%s, %s) + 1 AS total_days
         FROM inspections i
+        LEFT JOIN locations l ON i.location_id = l.id
+        LEFT JOIN regions r ON r.id = %s
         WHERE i.deleted_at IS NULL
           AND i.captured_at BETWEEN %s AND %s
-          AND (%s IS NULL OR i.location_id = %s)
+          AND (%s IS NULL OR l.address LIKE CONCAT('%%', r.name, '%%'))
     """
     summary_row = fetch_query(
         summary_sql,
-        (end_date, start_date, start_ts, end_ts, location_id, location_id),
+        (end_date, start_date, location_id, start_ts, end_ts, location_id),
         one=True
     ) or {}
 
@@ -44,14 +41,16 @@ def get_analytics_summary(start_date: str, end_date: str, location_id: int | Non
         FROM detections d
         JOIN detection_runs dr ON d.detection_run_id = dr.id
         JOIN inspections i ON dr.inspection_id = i.id
+        LEFT JOIN locations l ON i.location_id = l.id
+        LEFT JOIN regions r ON r.id = %s
         WHERE i.deleted_at IS NULL
           AND dr.status = 'SUCCEEDED'
           AND i.captured_at BETWEEN %s AND %s
-          AND (%s IS NULL OR i.location_id = %s)
+          AND (%s IS NULL OR l.address LIKE CONCAT('%%', r.name, '%%'))
     """
     det_row = fetch_query(
         detection_count_sql,
-        (start_ts, end_ts, location_id, location_id),
+        (location_id, start_ts, end_ts, location_id),
         one=True
     ) or {}
     total_detections = det_row.get("total_detections", 0) or 0
@@ -65,17 +64,19 @@ def get_analytics_summary(start_date: str, end_date: str, location_id: int | Non
         JOIN waste_types wt ON d.waste_type_id = wt.id
         JOIN detection_runs dr ON d.detection_run_id = dr.id
         JOIN inspections i ON dr.inspection_id = i.id
+        LEFT JOIN locations l ON i.location_id = l.id
+        LEFT JOIN regions r ON r.id = %s
         WHERE i.deleted_at IS NULL
           AND dr.status = 'SUCCEEDED'
           AND i.captured_at BETWEEN %s AND %s
-          AND (%s IS NULL OR i.location_id = %s)
+          AND (%s IS NULL OR l.address LIKE CONCAT('%%', r.name, '%%'))
         GROUP BY wt.id, wt.name_ko
         ORDER BY count DESC
         LIMIT 1
     """
     top_row = fetch_query(
         top_item_sql,
-        (start_ts, end_ts, location_id, location_id),
+        (location_id, start_ts, end_ts, location_id),
         one=True
     )
 
@@ -110,14 +111,16 @@ def get_daily_trends(start_date: str, end_date: str, location_id: int | None = N
         FROM inspections i
         JOIN detection_runs dr ON i.id = dr.inspection_id
         JOIN detections d ON dr.id = d.detection_run_id
+        LEFT JOIN locations l ON i.location_id = l.id
+        LEFT JOIN regions r ON r.id = %s
         WHERE i.deleted_at IS NULL
           AND dr.status = 'SUCCEEDED'
           AND i.captured_at BETWEEN %s AND %s
-          AND (%s IS NULL OR i.location_id = %s)
+          AND (%s IS NULL OR l.address LIKE CONCAT('%%', r.name, '%%'))
         GROUP BY DATE(i.captured_at), DATE_FORMAT(i.captured_at, '%%m/%%d')
         ORDER BY DATE(i.captured_at) ASC
     """
-    rows = fetch_query(sql, (start_ts, end_ts, location_id, location_id)) or []
+    rows = fetch_query(sql, (location_id, start_ts, end_ts, location_id)) or []
     return [{"date": row["date"], "count": row["count"]} for row in rows]
 
 
@@ -134,14 +137,16 @@ def get_waste_distribution(start_date: str, end_date: str, location_id: int | No
         JOIN waste_types wt ON d.waste_type_id = wt.id
         JOIN detection_runs dr ON d.detection_run_id = dr.id
         JOIN inspections i ON dr.inspection_id = i.id
+        LEFT JOIN locations l ON i.location_id = l.id
+        LEFT JOIN regions r ON r.id = %s
         WHERE i.deleted_at IS NULL
           AND dr.status = 'SUCCEEDED'
           AND i.captured_at BETWEEN %s AND %s
-          AND (%s IS NULL OR i.location_id = %s)
+          AND (%s IS NULL OR l.address LIKE CONCAT('%%', r.name, '%%'))
         GROUP BY wt.id, wt.name_ko
         ORDER BY count DESC
     """
-    rows = fetch_query(sql, (start_ts, end_ts, location_id, location_id)) or []
+    rows = fetch_query(sql, (location_id, start_ts, end_ts, location_id)) or []
 
     total_count = sum(row["count"] for row in rows)
     if total_count == 0:
@@ -152,6 +157,31 @@ def get_waste_distribution(start_date: str, end_date: str, location_id: int | No
             "name": row["name"],
             "count": row["count"],
             "percentage": round((row["count"] / total_count) * 100, 1),
+        }
+        for row in rows
+    ]
+
+def get_all_regions() -> List[Dict[str, Any]]:
+    """드롭다운 표시를 위한 전체 활성화 지역 목록을 조회합니다."""
+    sql = """
+        SELECT 
+            r.id,
+            r.name
+        FROM regions r
+        WHERE r.is_active = TRUE
+        AND EXISTS (
+            SELECT 1 
+            FROM locations l 
+            WHERE l.address LIKE CONCAT('%%', r.name, '%%')
+        )
+        ORDER BY r.sort_order ASC, r.name ASC;
+    """
+    rows = fetch_query(sql) or []
+
+    return [
+        {
+            "id": row["id"],
+            "name": row["name"],
         }
         for row in rows
     ]

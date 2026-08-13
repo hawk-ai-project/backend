@@ -18,3 +18,6 @@ def get_analytics_dashboard(
         trends=trends,
         distribution=distribution
     )
+
+def get_regions():
+    return analytics_repository.get_all_regions()

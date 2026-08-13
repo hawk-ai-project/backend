@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 
 
@@ -32,3 +32,7 @@ class AnalyticsResponse(BaseModel):
     summary: AnalyticsSummary
     trends: List[DailyTrend]
     distribution: List[WasteDistribution]
+
+class RegionResponse(BaseModel):
+    id: int
+    name: str

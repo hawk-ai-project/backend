@@ -473,6 +473,21 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='관리자 감사 및 사용자 활동 모니터링 로그';
 
 -- ---------------------------------------------------------------------------
+-- 점검 지역 기준정보 데이터
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS regions (
+    id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '지역 고유 식별자',
+    name        VARCHAR(50) NOT NULL COMMENT '지역명 (예: 서울, 경기, 부산 등)',
+    sort_order  INT NOT NULL DEFAULT 0 COMMENT '드롭다운 표시 순서',
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE COMMENT '지역 활성화 여부',
+    created_at  DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '생성 일시',
+    updated_at  DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '수정 일시',
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_regions_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='점검 지역(시/도) 정보';
+
+-- ---------------------------------------------------------------------------
 -- 기준 데이터 (여러 번 실행해도 안전)
 -- ---------------------------------------------------------------------------
 
