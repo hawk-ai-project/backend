@@ -526,6 +526,31 @@ CREATE TABLE IF NOT EXISTS regions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='점검 지역(시/도) 정보';
 
 -- ---------------------------------------------------------------------------
+-- user별 즐겨찾기 Link
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE `user_favorites` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '즐겨찾기 식별자',
+  `user_id` bigint unsigned NOT NULL COMMENT '사용자 식별자',
+  `menu_id` bigint unsigned DEFAULT NULL COMMENT '메뉴 식별자 (시스템 메뉴 연동 시)',
+  `title` varchar(100) NOT NULL COMMENT '즐겨찾기 표시 이름',
+  `path` varchar(255) NOT NULL COMMENT '이동 경로 URL',
+  `icon` varchar(100) DEFAULT NULL COMMENT '아이콘 식별자',
+  `sort_order` int NOT NULL DEFAULT '0' COMMENT '정렬 순서',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '등록 일시',
+  `visit_count` int unsigned NOT NULL DEFAULT '1' COMMENT '방문/클릭 횟수',
+  `last_visited_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '최근 방문 일시',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_user_path` (`user_id`,`path`),
+  UNIQUE KEY `uq_user_menu` (`user_id`,`menu_id`),
+  KEY `ix_user_favorites_order` (`user_id`,`sort_order`),
+  KEY `fk_user_favorites_menu` (`menu_id`),
+  KEY `ix_user_favorites_top5` (`user_id`,`visit_count` DESC,`last_visited_at` DESC),
+  CONSTRAINT `fk_user_favorites_menu` FOREIGN KEY (`menu_id`) REFERENCES `menu` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_user_favorites_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='유저별 즐겨찾기 목록'
+
+-- ---------------------------------------------------------------------------
 -- 기준 데이터 (여러 번 실행해도 안전)
 -- ---------------------------------------------------------------------------
 

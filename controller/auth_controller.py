@@ -137,3 +137,7 @@ def logout(
 
 def auth_error_response(_request, exc: auth_service.AuthError):
     return JSONResponse(status_code=exc.status_code, content={"message": exc.message})
+
+def get_current_user_id(auth=Depends(current_auth)) -> int:
+    """인증된 유저의 ID(pk)만 반환하는 의존성 함수"""
+    return auth[0]["id"]
