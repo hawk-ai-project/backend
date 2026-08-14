@@ -50,7 +50,6 @@ HTTP 요청 → controller → service → repository → common.db → MySQL
 DATABASE_URL=mysql+pymysql://사용자:비밀번호@호스트:3306/데이터베이스
 SECRET_KEY=충분히-긴-비밀키
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
 
 ORM이 스키마를 자동 생성하지 않으므로 서버 실행 전에 `sql/schema.sql`을 직접 적용해야 합니다.

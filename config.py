@@ -23,7 +23,6 @@ class Settings:
     database_url: str
     secret_key: str
     algorithm: str
-    access_token_expire_minutes: int
     refresh_cookie_secure: bool
     minio_endpoint: str
     minio_access_key: str
@@ -37,7 +36,6 @@ class Settings:
 
 
 def get_settings() -> Settings:
-    expire_minutes = os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
     max_upload_size = os.getenv("MAX_UPLOAD_SIZE_MB", "20")
     ai_connect_timeout = os.getenv("AI_SERVER_CONNECT_TIMEOUT", "5")
     ai_read_timeout = os.getenv(
@@ -45,7 +43,6 @@ def get_settings() -> Settings:
         os.getenv("AI_SERVER_TIMEOUT_SECONDS", "120"),
     )
     try:
-        parsed_expire_minutes = int(expire_minutes)
         parsed_max_upload_size = int(max_upload_size) * 1024 * 1024
         parsed_ai_connect_timeout = float(ai_connect_timeout)
         parsed_ai_read_timeout = float(ai_read_timeout)
@@ -61,7 +58,6 @@ def get_settings() -> Settings:
         database_url=_required("DATABASE_URL"),
         secret_key=_required("SECRET_KEY"),
         algorithm=os.getenv("ALGORITHM", "HS256"),
-        access_token_expire_minutes=parsed_expire_minutes,
         refresh_cookie_secure=os.getenv("REFRESH_COOKIE_SECURE", "false").lower() in {"1", "true", "yes"},
         minio_endpoint=os.getenv("MINIO_ENDPOINT", "localhost:9000"),
         minio_access_key=os.getenv("MINIO_ACCESS_KEY", "hawk-backend"),

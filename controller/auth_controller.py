@@ -12,10 +12,20 @@ router = APIRouter(prefix="/api/auth", tags=["인증"])
 REFRESH_COOKIE = "hawk_ai_refresh_token"
 
 
-def _set_refresh_cookie(response: Response, token: str, max_age: int) -> None:
+def _request_is_https(request: Request) -> bool:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    effective_scheme = forwarded_proto.split(",", 1)[0].strip().lower() or request.url.scheme
+    return effective_scheme == "https"
+
+
+def _set_refresh_cookie(request: Request, response: Response, token: str, max_age: int) -> None:
+    # Secure cookies are required on HTTPS, but browsers discard them when the
+    # development UI calls an HTTP API directly. Keep the configured security
+    # preference while allowing the local/LAN HTTP environment to refresh.
+    secure = auth_service.settings.refresh_cookie_secure and _request_is_https(request)
     response.set_cookie(
         key=REFRESH_COOKIE, value=token, max_age=max_age,
-        httponly=True, secure=auth_service.settings.refresh_cookie_secure,
+        httponly=True, secure=secure,
         samesite="lax", path="/api/auth",
     )
 
@@ -49,7 +59,7 @@ def login(payload: LoginRequest, request: Request, response: Response):
     )
     request.state.activity_user_id = result["user"]["id"]
     request.state.activity_session_id = auth_service.decode_token(result["accessToken"])["sid"]
-    _set_refresh_cookie(response, result.pop("refreshToken"), result.pop("refreshMaxAge"))
+    _set_refresh_cookie(request, response, result.pop("refreshToken"), result.pop("refreshMaxAge"))
     return result
 
 
@@ -67,7 +77,7 @@ def refresh_session(
     )
     request.state.activity_user_id = result["user"]["id"]
     request.state.activity_session_id = auth_service.decode_token(result["accessToken"])["sid"]
-    _set_refresh_cookie(response, result.pop("refreshToken"), result.pop("refreshMaxAge"))
+    _set_refresh_cookie(request, response, result.pop("refreshToken"), result.pop("refreshMaxAge"))
     return result
 
 

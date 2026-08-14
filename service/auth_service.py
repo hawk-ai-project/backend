@@ -15,6 +15,7 @@ from repository import auth_repository, file_repository
 from repository import settings_repository
 from service import file_service
 
+DEFAULT_SESSION_EXPIRE_MINUTES = 30
 
 class AuthError(Exception):
     def __init__(self, message: str, status_code: int = 401):
@@ -73,9 +74,8 @@ def _hash_refresh_token(token: str) -> str:
 
 
 def _access_token_lifetime(session_minutes: int) -> timedelta:
-    """Keep the access token shorter than the renewable server session."""
-    minutes = min(settings.access_token_expire_minutes, max(1, session_minutes // 2))
-    return timedelta(minutes=minutes)
+    """Match the access token lifetime to the administrator session policy."""
+    return timedelta(minutes=max(1, session_minutes))
 
 
 def decode_token(token: str) -> dict[str, Any]:
@@ -138,7 +138,7 @@ def login(
         raise AuthError("사용할 수 없는 계정입니다.", 403)
     session_id = str(uuid.uuid4())
     expire_minutes = int(settings_repository.get_value(
-        "session_expire_minutes", str(settings.access_token_expire_minutes)
+        "session_expire_minutes", str(DEFAULT_SESSION_EXPIRE_MINUTES)
     ))
     now = datetime.now(timezone.utc)
     access_expires_at = now + _access_token_lifetime(expire_minutes)
@@ -166,7 +166,7 @@ def refresh(
 ) -> dict[str, Any]:
     next_token = _new_refresh_token()
     session_minutes = int(settings_repository.get_value(
-        "session_expire_minutes", str(settings.access_token_expire_minutes)
+        "session_expire_minutes", str(DEFAULT_SESSION_EXPIRE_MINUTES)
     ))
     now = datetime.now(timezone.utc)
     session = auth_repository.rotate_refresh_token(
