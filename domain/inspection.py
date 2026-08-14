@@ -14,6 +14,7 @@ class InspectionCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     location: str = Field(min_length=1, max_length=150)
     notes: str | None = None
+    address: str | None = None
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
 
@@ -109,6 +110,7 @@ class InspectionSaveRequest(BaseModel):
     location_name: str
     coordinates: str
     notes: str | None = None
+    address: str | None = None
     status: str
     image: str
     ai_detections: list[ObjectDetection]

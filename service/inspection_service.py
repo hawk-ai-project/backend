@@ -82,7 +82,7 @@ def _create_inspection_with_image(
         if resolved:
             latitude, longitude = resolved
     location_id = inspection_repository.find_or_create_location(
-        payload.location.strip(), user["id"], latitude, longitude,
+        payload.location.strip(), user["id"], latitude, longitude, payload.address
     )
     inspection_id = inspection_repository.create_inspection(
         location_id,
@@ -164,19 +164,9 @@ def save_inspection(payload: InspectionSaveRequest, user: dict) -> dict:
         image=payload.image,
         title=payload.title,
         location=payload.location_name,
+        address=payload.address,
         notes=payload.notes,
         latitude=latitude,
         longitude=longitude,
     )
     return _create_inspection_with_image(request, user, status=payload.status)
-
-    # AI 분석 결과 요약
-    if payload.ai_detections:
-        ai_opinion = ", ".join([f"{d.className} {int(d.confidence * 100)}%" for d in payload.ai_detections])
-    else:
-        ai_opinion = "발견된 객체 없음"
-
-    # 2. DB 저장소 호출
-    inspection_repository.insert_inspection_record(payload, user["id"], ai_opinion)
-    
-    return {"message": "현장 점검 이력이 성공적으로 저장되었습니다."}

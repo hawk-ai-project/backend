@@ -16,24 +16,13 @@ def find_active_assignees() -> list[dict[str, Any]]:
     )
     return rows if isinstance(rows, list) else []
 
-
 def find_or_create_location(
-    name: str, user_id: int, latitude: float | None = None, longitude: float | None = None,
+    name: str, user_id: int, latitude: float | None = None, longitude: float | None = None, address: str | None = None
 ) -> int:
-    existing = fetch_query(
-        "SELECT id FROM locations WHERE name = %s AND is_active = TRUE ORDER BY id LIMIT 1",
-        (name,), one=True,
-    )
-    if isinstance(existing, dict):
-        if latitude is not None and longitude is not None:
-            execute_query(
-                "UPDATE locations SET latitude = %s, longitude = %s WHERE id = %s",
-                (latitude, longitude, existing["id"]),
-            )
-        return int(existing["id"])
+    # 중복 검사(SELECT) 없이 무조건 locations 테이블에 새로운 행을 추가
     return execute_query(
-        "INSERT INTO locations (name, latitude, longitude, created_by) VALUES (%s, %s, %s, %s)",
-        (name, latitude, longitude, user_id),
+        "INSERT INTO locations (name, address, latitude, longitude, created_by) VALUES (%s, %s, %s, %s, %s)",
+        (name, address, latitude, longitude, user_id),
     )
 
 
