@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS users (
     status          ENUM('PENDING', 'ACTIVE', 'SUSPENDED', 'WITHDRAWN') NOT NULL DEFAULT 'ACTIVE' COMMENT '사용자 계정 상태',
     last_login_at   DATETIME(6) NULL COMMENT '마지막 로그인 일시',
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '사용자 생성 일시',
-    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '사용자 정보 수정 일시',
+    updated_at      DATETIME(6) NULL COMMENT '사용자 정보 수정 일시',
     deleted_at      DATETIME(6) NULL COMMENT '소프트 삭제 일시',
     profile_file_id BIGINT UNSIGNED NULL COMMENT 'Current profile image file identifier',
     PRIMARY KEY (id),
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS files (
     byte_size       BIGINT UNSIGNED NOT NULL COMMENT 'Object size in bytes',
     etag            VARCHAR(64) NULL COMMENT 'MinIO object ETag',
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    updated_at      DATETIME(6) NULL,
     deleted_at      DATETIME(6) NULL COMMENT 'Soft deletion timestamp',
     PRIMARY KEY (id),
     UNIQUE KEY uq_files_bucket_object (bucket_name, object_key),
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS menu (
     is_use          BOOLEAN NOT NULL DEFAULT TRUE COMMENT '메뉴 사용 여부',
     sort_order      INT NOT NULL DEFAULT 0 COMMENT '동일 계층 내 표시 순서',
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '메뉴 생성 일시',
-    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '메뉴 수정 일시',
+    updated_at      DATETIME(6) NULL COMMENT '메뉴 수정 일시',
     PRIMARY KEY (id),
     UNIQUE KEY uq_menu_path (path),
     KEY ix_menu_active_order (is_use, sort_order),
@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS locations (
     is_active       BOOLEAN NOT NULL DEFAULT TRUE COMMENT '점검 장소 활성 여부',
     created_by      BIGINT UNSIGNED NOT NULL COMMENT '점검 장소를 등록한 사용자 식별자',
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '점검 장소 생성 일시',
-    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '점검 장소 수정 일시',
+    updated_at      DATETIME(6) NULL COMMENT '점검 장소 수정 일시',
     PRIMARY KEY (id),
     KEY ix_locations_name (name),
     KEY ix_locations_coordinates (latitude, longitude),
@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS inspections (
     reviewed_at         DATETIME(6) NULL COMMENT '점검 검토 완료 일시',
     resolved_at         DATETIME(6) NULL COMMENT '점검 조치 완료 일시',
     created_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '점검 생성 일시',
-    updated_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '점검 수정 일시',
+    updated_at          DATETIME(6) NULL COMMENT '점검 수정 일시',
     deleted_at          DATETIME(6) NULL COMMENT '소프트 삭제 일시',
     PRIMARY KEY (id),
     KEY ix_inspections_history (captured_at DESC, id DESC),
@@ -291,7 +291,7 @@ CREATE TABLE IF NOT EXISTS inspection_actions (
     due_at          DATETIME(6) NULL COMMENT '후속 조치 완료 기한',
     completed_at    DATETIME(6) NULL COMMENT '후속 조치 완료 일시',
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '후속 조치 생성 일시',
-    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '후속 조치 수정 일시',
+    updated_at      DATETIME(6) NULL COMMENT '후속 조치 수정 일시',
     PRIMARY KEY (id),
     KEY ix_inspection_actions_inspection (inspection_id, created_at DESC),
     KEY ix_inspection_actions_assignee_status (assignee_id, status, due_at),
@@ -344,7 +344,7 @@ CREATE TABLE IF NOT EXISTS boards (
     view_count      BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '게시글 조회 수',
     published_at    DATETIME(6) NULL COMMENT '게시글 공개 일시',
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '게시글 생성 일시',
-    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '게시글 수정 일시',
+    updated_at      DATETIME(6) NULL COMMENT '게시글 수정 일시',
     deleted_at      DATETIME(6) NULL COMMENT '소프트 삭제 일시',
     PRIMARY KEY (id),
     KEY ix_boards_list (status, is_notice DESC, published_at DESC, id DESC),
@@ -365,7 +365,7 @@ CREATE TABLE IF NOT EXISTS hokeytoon_comments (
     content             VARCHAR(1000) NOT NULL DEFAULT '',
     emoticon            VARCHAR(40) NULL,
     created_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    updated_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    updated_at          DATETIME(6) NULL,
     deleted_at          DATETIME(6) NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uq_hokeytoon_comments_episode_id (episode_id, id),
@@ -412,7 +412,7 @@ CREATE TABLE IF NOT EXISTS board_comments (
     moderated_at        DATETIME(6) NULL COMMENT '마지막 관리자 조치 일시',
     moderation_reason   VARCHAR(500) NULL COMMENT '마지막 관리자 조치 사유',
     created_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '댓글 생성 일시',
-    updated_at          DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '댓글 수정 일시',
+    updated_at          DATETIME(6) NULL COMMENT '댓글 수정 일시',
     deleted_at          DATETIME(6) NULL COMMENT '소프트 삭제 일시',
     PRIMARY KEY (id),
     UNIQUE KEY uq_board_comments_board_id (board_id, id),
@@ -450,7 +450,7 @@ CREATE TABLE IF NOT EXISTS forbidden_words (
     is_active       BOOLEAN NOT NULL DEFAULT TRUE COMMENT '탐지 사용 여부',
     created_by      BIGINT UNSIGNED NULL COMMENT '등록 관리자',
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    updated_at      DATETIME(6) NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uq_forbidden_words_normalized (normalized_word),
     KEY ix_forbidden_words_active (is_active, id),
@@ -520,7 +520,7 @@ CREATE TABLE IF NOT EXISTS regions (
     sort_order  INT NOT NULL DEFAULT 0 COMMENT '드롭다운 표시 순서',
     is_active   BOOLEAN NOT NULL DEFAULT TRUE COMMENT '지역 활성화 여부',
     created_at  DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '생성 일시',
-    updated_at  DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '수정 일시',
+    updated_at  DATETIME(6) NULL COMMENT '수정 일시',
     PRIMARY KEY (id),
     UNIQUE KEY uq_regions_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='점검 지역(시/도) 정보';
@@ -529,7 +529,7 @@ CREATE TABLE IF NOT EXISTS regions (
 -- user별 즐겨찾기 Link
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE `user_favorites` (
+CREATE TABLE IF NOT EXISTS `user_favorites` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '즐겨찾기 식별자',
   `user_id` bigint unsigned NOT NULL COMMENT '사용자 식별자',
   `menu_id` bigint unsigned DEFAULT NULL COMMENT '메뉴 식별자 (시스템 메뉴 연동 시)',
@@ -548,7 +548,7 @@ CREATE TABLE `user_favorites` (
   KEY `ix_user_favorites_top5` (`user_id`,`visit_count` DESC,`last_visited_at` DESC),
   CONSTRAINT `fk_user_favorites_menu` FOREIGN KEY (`menu_id`) REFERENCES `menu` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_user_favorites_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='유저별 즐겨찾기 목록'
+) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='유저별 즐겨찾기 목록';
 
 -- ---------------------------------------------------------------------------
 -- 기준 데이터 (여러 번 실행해도 안전)
