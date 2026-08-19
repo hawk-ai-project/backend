@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 
 from client import ai_client
 from domain.inspection import InspectionCreateRequest, InspectionRequest, InspectionResponse, InspectionSaveRequest
-from repository import chat_repository, inspection_repository
+from repository import inspection_repository
 from service import ai_error_service, file_service, geocoding_service
 
 
@@ -22,7 +22,7 @@ def analyze_image(payload: InspectionRequest) -> InspectionResponse:
 
 
 def get_recent_history(user: dict, limit: int) -> list[dict]:
-    rows = chat_repository.find_inspection_history(
+    rows = inspection_repository.find_inspection_history(
         limit=limit,
         user_id=user["id"],
         is_admin=user.get("role") == "ADMIN",
@@ -36,6 +36,7 @@ def get_recent_history(user: dict, limit: int) -> list[dict]:
             "id": row["id"],
             "title": row["title"],
             "location": row["location"],
+            "address": row.get("address"),
             "coordinates": row.get("coordinates"),
             "capturedAt": row["capturedAt"],
             "status": row["status"],
