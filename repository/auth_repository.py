@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from common.db import execute_query, fetch_query
+from common.db import execute_query, fetch_query, engine
 
 
 def find_user_by_email(email: str) -> dict[str, Any] | None:

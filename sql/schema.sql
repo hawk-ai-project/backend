@@ -156,25 +156,26 @@ CREATE TABLE IF NOT EXISTS inspections (
     CONSTRAINT fk_inspections_reviewer FOREIGN KEY (reviewer_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='현장 점검 및 처리 상태 정보';
 
-CREATE TABLE IF NOT EXISTS inspection_images (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '점검 이미지 고유 식별자',
-    inspection_id   BIGINT UNSIGNED NOT NULL COMMENT '이미지가 속한 점검 식별자',
-    kind            ENUM('ORIGINAL', 'ANNOTATED') NOT NULL DEFAULT 'ORIGINAL' COMMENT '원본 또는 탐지 결과 표시 이미지 구분',
-    storage_key     VARCHAR(1024) NOT NULL COMMENT '객체 스토리지 내부 키',
-    original_name   VARCHAR(255) NULL COMMENT '업로드 당시 원본 파일 이름',
-    mime_type       VARCHAR(100) NOT NULL COMMENT '이미지 MIME 유형',
-    byte_size       BIGINT UNSIGNED NOT NULL COMMENT '이미지 파일 크기(바이트)',
-    width           INT UNSIGNED NULL COMMENT '이미지 너비(픽셀)',
-    height          INT UNSIGNED NULL COMMENT '이미지 높이(픽셀)',
-    sha256          CHAR(64) NULL COMMENT '이미지 파일 SHA-256 해시',
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '이미지 메타데이터 생성 일시',
-    PRIMARY KEY (id),
-    UNIQUE KEY uq_inspection_images_storage_key (storage_key),
-    KEY ix_inspection_images_inspection_kind (inspection_id, kind),
-    CONSTRAINT ck_inspection_images_byte_size CHECK (byte_size > 0),
-    CONSTRAINT ck_inspection_images_dimensions CHECK ((width IS NULL AND height IS NULL) OR (width > 0 AND height > 0)),
-    CONSTRAINT fk_inspection_images_inspection FOREIGN KEY (inspection_id) REFERENCES inspections (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='점검 원본 및 분석 이미지 정보';
+CREATE TABLE `inspection_images` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '점검 이미지 고유 식별자',
+  `inspection_id` bigint unsigned NOT NULL COMMENT '이미지가 속한 점검 식별자',
+  `kind` enum('ORIGINAL','ANNOTATED','COLLECTION_PROOF') NOT NULL DEFAULT 'ORIGINAL' COMMENT '원본, 탐지 결과 표시, 수거 완료 증빙 이미지 구분',
+  `storage_key` varchar(1024) NOT NULL COMMENT '객체 스토리지 내부 키',
+  `storage_key_hash` binary(32) GENERATED ALWAYS AS (unhex(sha2(`storage_key`,256))) STORED COMMENT '객체 스토리지 키의 고유 인덱스용 SHA-256 해시',
+  `original_name` varchar(255) DEFAULT NULL COMMENT '업로드 당시 원본 파일 이름',
+  `mime_type` varchar(100) NOT NULL COMMENT '이미지 MIME 유형',
+  `byte_size` bigint unsigned NOT NULL COMMENT '이미지 파일 크기(바이트)',
+  `width` int unsigned DEFAULT NULL COMMENT '이미지 너비(픽셀)',
+  `height` int unsigned DEFAULT NULL COMMENT '이미지 높이(픽셀)',
+  `sha256` char(64) DEFAULT NULL COMMENT '이미지 파일 SHA-256 해시',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '이미지 메타데이터 생성 일시',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inspection_images_storage_key_hash` (`storage_key_hash`),
+  KEY `ix_inspection_images_inspection_kind` (`inspection_id`,`kind`),
+  CONSTRAINT `fk_inspection_images_inspection` FOREIGN KEY (`inspection_id`) REFERENCES `inspections` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `ck_inspection_images_byte_size` CHECK ((`byte_size` > 0)),
+  CONSTRAINT `ck_inspection_images_dimensions` CHECK ((((`width` is null) and (`height` is null)) or ((`width` > 0) and (`height` > 0))))
+) ENGINE=InnoDB AUTO_INCREMENT=107 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='점검 원본 및 분석 이미지 정보'
 
 -- ---------------------------------------------------------------------------
 -- AI 분석과 객체 탐지

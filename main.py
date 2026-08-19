@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from controller import admin_controller, ai_management_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller
-from controller import admin_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller, favorite_controller
+from controller import admin_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller, favorite_controller, history_controller
 from service.auth_service import AuthError
 from service import activity_service
 
@@ -83,6 +83,7 @@ app.include_router(inspection_controller.router)
 app.include_router(analytics_controller.router)
 app.include_router(analytics_insight_controller.router)
 app.include_router(favorite_controller.router)
+app.include_router(history_controller.router)
 
 # ---------------------------------------------------------
 # 서버 구동 상태 확인용 루트 엔드포인트
