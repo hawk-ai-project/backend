@@ -1,4 +1,5 @@
 # backend/controller/inspection_controller.py
+
 from fastapi import APIRouter, Depends
 from controller.auth_controller import current_auth
 from domain.inspection import (

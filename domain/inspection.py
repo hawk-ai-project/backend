@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel, Field
+from domain.waste_type import WasteDetectionRequest
 
 # 프론트엔드에서 백엔드로
 class InspectionRequest(BaseModel):
@@ -114,3 +115,4 @@ class InspectionSaveRequest(BaseModel):
     status: str
     image: str
     ai_detections: list[ObjectDetection]
+    detections: list[WasteDetectionRequest] = Field(default_factory=list)
