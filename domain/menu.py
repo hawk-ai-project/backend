@@ -1,28 +1,39 @@
 """메뉴 도메인 모델."""
-
-from typing import Literal
-
+from datetime import datetime
+from enum import Enum
+from typing import List, Optional
 from pydantic import BaseModel
 
+class MenuType(str, Enum):
+    GROUP = "GROUP"
+    PAGE = "PAGE"
+    ACTION = "ACTION"
 
-class MenuCreate(BaseModel):
+class MenuBase(BaseModel):
+    parent_id: Optional[int] = None
     name: str
     path: str
-    icon: str | None = None
+    icon: Optional[str] = None
+    menu_type: MenuType = MenuType.PAGE
+    description: Optional[str] = None
     is_use: bool = True
     sort_order: int = 0
-    parent_id: int | None = None
-    menu_type: Literal["GROUP", "PAGE", "ACTION"] = "PAGE"
-    description: str | None = None
 
+class MenuCreate(MenuBase):
+    pass
 
-class Menu(BaseModel):
+class MenuResponse(MenuBase):
     id: int
-    parent_id: int | None
-    name: str
-    path: str
-    icon: str | None
-    menu_type: str
-    description: str | None
-    is_use: bool
-    sort_order: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class MenuTreeResponse(MenuResponse):
+    label: str
+    href: str
+    children: List["MenuTreeResponse"] = []
+
+class MenuUpdate(MenuBase):
+    pass
