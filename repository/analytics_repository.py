@@ -186,3 +186,41 @@ def get_all_regions() -> List[Dict[str, Any]]:
         }
         for row in rows
     ]
+
+def get_analytics_locations(start_date: str, end_date: str, location_id: int | None = None) -> List[Dict[str, Any]]:
+    """조회 기간 및 조건에 해당하는 위치 및 GPS 좌표 목록을 조회합니다."""
+    start_ts = f"{start_date} 00:00:00"
+    end_ts = f"{end_date} 23:59:59"
+
+    sql = """
+        SELECT /* get_analytics_locations.sql */
+            l.id,
+            l.address AS name,
+            l.address,
+            l.latitude,
+            l.longitude,
+            COUNT(i.id) AS count
+        FROM inspections i
+        JOIN locations l ON i.location_id = l.id
+        LEFT JOIN regions r ON r.id = %s
+        WHERE i.deleted_at IS NULL
+          AND i.captured_at BETWEEN %s AND %s
+          AND (%s IS NULL OR l.address LIKE CONCAT('%%', r.name, '%%'))
+          AND l.latitude IS NOT NULL 
+          AND l.longitude IS NOT NULL
+          AND l.latitude != 0 
+          AND l.longitude != 0
+        GROUP BY l.id, l.address, l.latitude, l.longitude
+    """
+    rows = fetch_query(sql, (location_id, start_ts, end_ts, location_id)) or []
+    return [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "address": row["address"],
+            "latitude": float(row["latitude"]),
+            "longitude": float(row["longitude"]),
+            "count": row["count"],
+        }
+        for row in rows
+    ]
