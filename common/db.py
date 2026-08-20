@@ -1,6 +1,7 @@
 """FastAPI에서 사용하는 MySQL 직접 SQL 연결 유틸리티."""
 
 from collections.abc import Generator, Mapping, Sequence
+import inspect
 from typing import Any
 
 import pymysql
@@ -12,6 +13,17 @@ from config import settings
 
 
 DATABASE_URL = settings.database_url
+
+# 제외할 파일(리포지토리) 목록 설정
+EXCLUDE_LOG_FILES = ("auth_repository.py", "chat_repository.py")
+
+
+def _should_log() -> bool:
+    """호출 스택을 검사하여 로그 출력 대상 여부를 판단한다."""
+    for frame in inspect.stack():
+        if any(file_name in frame.filename for file_name in EXCLUDE_LOG_FILES):
+            return False
+    return True
 
 
 # SQLAlchemy의 ORM 기능은 사용하지 않고 커넥션 풀만 사용한다.
@@ -56,7 +68,8 @@ def execute_query(
     try:
         with connection.cursor(pymysql.cursors.DictCursor) as cursor:
             full_sql = cursor.mogrify(sql, args)
-            print(f"\n[SQL EXECUTE]\n{full_sql}\n")
+            if _should_log():
+                print(f"\n[SQL EXECUTE]\n{full_sql}\n")
             cursor.execute(sql, args)
             connection.commit()
             return int(cursor.lastrowid or cursor.rowcount)
@@ -78,7 +91,8 @@ def fetch_query(
     try:
         with connection.cursor(pymysql.cursors.DictCursor) as cursor:
             full_sql = cursor.mogrify(sql, args)
-            print(f"\n[SQL FETCH]\n{full_sql}\n")
+            if _should_log():
+                print(f"\n[SQL FETCH]\n{full_sql}\n")
             cursor.execute(sql, args)
             if one:
                 return cursor.fetchone()
