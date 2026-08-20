@@ -7,7 +7,7 @@ def find_all_active() -> List[Dict[str, Any]]:
     """사용 중인 메뉴 목록을 정렬 순서대로 조회한다."""
     rows = fetch_query(
         """SELECT id, parent_id, name, path, icon, menu_type,
-                  description, is_use, sort_order, created_at, updated_at
+                  description, is_use, sort_order, is_admin_only, created_at, updated_at
            FROM menu
            WHERE is_use = TRUE
            ORDER BY sort_order ASC, id ASC"""
@@ -18,7 +18,7 @@ def find_all() -> List[Dict[str, Any]]:
     """전체 메뉴 목록을 조회한다 (관리자용)."""
     rows = fetch_query(
         """SELECT id, parent_id, name, path, icon, menu_type,
-                  description, is_use, sort_order, created_at, updated_at
+                  description, is_use, sort_order, is_admin_only, created_at, updated_at
            FROM menu
            ORDER BY parent_id ASC, sort_order ASC, id ASC"""
     )
@@ -28,7 +28,7 @@ def find_by_id(menu_id: int) -> Optional[Dict[str, Any]]:
     """식별자에 해당하는 메뉴 한 건을 조회한다."""
     row = fetch_query(
         """SELECT id, parent_id, name, path, icon, menu_type,
-                  description, is_use, sort_order, created_at, updated_at
+                  description, is_use, sort_order, is_admin_only, created_at, updated_at
            FROM menu
            WHERE id = %s""",
         (menu_id,),
@@ -41,8 +41,8 @@ def create(menu: MenuCreate) -> int:
     return execute_query(
         """INSERT INTO menu (
             parent_id, name, path, icon, menu_type,
-            description, is_use, sort_order
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            description, is_use, sort_order, is_admin_only
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         (
             menu.parent_id,
             menu.name,
@@ -52,6 +52,7 @@ def create(menu: MenuCreate) -> int:
             menu.description,
             menu.is_use,
             menu.sort_order,
+            menu.is_admin_only, # ★ 추가
         ),
     )
 
@@ -67,6 +68,7 @@ def update(menu_id: int, menu: MenuUpdate) -> bool:
                description = %s,
                is_use = %s,
                sort_order = %s,
+               is_admin_only = %s,
                updated_at = NOW()
            WHERE id = %s""",
         (
@@ -78,6 +80,7 @@ def update(menu_id: int, menu: MenuUpdate) -> bool:
             menu.description,
             menu.is_use,
             menu.sort_order,
+            menu.is_admin_only, # ★ 추가
             menu_id,
         ),
     )

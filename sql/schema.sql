@@ -88,24 +88,25 @@ ALTER TABLE users
     ADD CONSTRAINT fk_users_profile_file
         FOREIGN KEY (profile_file_id) REFERENCES files (id) ON DELETE SET NULL;
 
-CREATE TABLE IF NOT EXISTS menu (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '메뉴 고유 식별자',
-    parent_id       BIGINT UNSIGNED NULL COMMENT '상위 메뉴 식별자',
-    name            VARCHAR(100) NOT NULL COMMENT '메뉴 표시 이름',
-    path            VARCHAR(255) NOT NULL COMMENT '메뉴 라우트 또는 액션 경로',
-    icon            VARCHAR(100) NULL COMMENT '메뉴 아이콘 이름 또는 식별자',
-    menu_type       ENUM('GROUP', 'PAGE', 'ACTION') NOT NULL DEFAULT 'PAGE' COMMENT '메뉴 동작 유형',
-    description     VARCHAR(500) NULL COMMENT '메뉴 설명',
-    is_use          BOOLEAN NOT NULL DEFAULT TRUE COMMENT '메뉴 사용 여부',
-    sort_order      INT NOT NULL DEFAULT 0 COMMENT '동일 계층 내 표시 순서',
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '메뉴 생성 일시',
-    updated_at      DATETIME(6) NULL COMMENT '메뉴 수정 일시',
-    PRIMARY KEY (id),
-    UNIQUE KEY uq_menu_path (path),
-    KEY ix_menu_active_order (is_use, sort_order),
-    KEY ix_menu_parent_order (parent_id, sort_order),
-    CONSTRAINT fk_menu_parent FOREIGN KEY (parent_id) REFERENCES menu (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='서비스 메뉴 구성 정보';
+CREATE TABLE `menu` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '메뉴 고유 식별자',
+  `parent_id` bigint unsigned DEFAULT NULL COMMENT '상위 메뉴 식별자',
+  `name` varchar(100) NOT NULL COMMENT '메뉴 표시 이름',
+  `path` varchar(255) NOT NULL COMMENT '메뉴 라우트 또는 액션 경로',
+  `icon` varchar(100) DEFAULT NULL COMMENT '메뉴 아이콘 이름 또는 식별자',
+  `menu_type` enum('GROUP','PAGE','ACTION') NOT NULL DEFAULT 'PAGE' COMMENT '메뉴 동작 유형',
+  `description` varchar(500) DEFAULT NULL COMMENT '메뉴 설명',
+  `is_use` tinyint(1) NOT NULL DEFAULT '1' COMMENT '메뉴 사용 여부',
+  `sort_order` int NOT NULL DEFAULT '0' COMMENT '동일 계층 내 표시 순서',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '메뉴 생성 일시',
+  `updated_at` datetime(6) DEFAULT NULL,
+  `is_admin_only` tinyint(1) NOT NULL DEFAULT '0' COMMENT '관리자 전용 메뉴 여부(1: 관리자 전용, 0: 전체)',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_menu_path` (`path`),
+  KEY `ix_menu_active_order` (`is_use`,`sort_order`),
+  KEY `ix_menu_parent_order` (`parent_id`,`sort_order`),
+  CONSTRAINT `fk_menu_parent` FOREIGN KEY (`parent_id`) REFERENCES `menu` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='서비스 메뉴 구성 정보'
 
 -- ---------------------------------------------------------------------------
 -- 점검 위치와 현장 점검

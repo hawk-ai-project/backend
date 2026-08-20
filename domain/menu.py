@@ -18,6 +18,7 @@ class MenuBase(BaseModel):
     description: Optional[str] = None
     is_use: bool = True
     sort_order: int = 0
+    is_admin_only: bool = False
 
 class MenuCreate(MenuBase):
     pass
