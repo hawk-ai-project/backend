@@ -3,10 +3,77 @@
 import json
 
 from fastapi import HTTPException, status
-from client import ai_client
-from domain.inspection import InspectionCreateRequest, InspectionRequest, InspectionResponse, InspectionSaveRequest
+# from client import ai_client
+from domain.inspection import InspectionCreateRequest, InspectionRequest, InspectionResponse, InspectionSaveRequest, ObjectDetection
 from repository import inspection_repository
 from service import ai_error_service, file_service, geocoding_service
+
+# YOLO AI 모델 로드
+# 임시로 sample용 .pt 파일 적용
+model = YOLO("tests/best.pt")
+
+WASTE_MAP = {
+    0: 1,   # YOLO 클래스 0번 = DB 폐기물 ID 1번
+    1: 2,
+}
+
+def _run_yolo_detection(image_b64: str) -> dict:
+    # 1. Base64 이미지 디코딩
+    if "," in image_b64:
+        image_b64 = image_b64.split(',')[1]
+        
+    nparr = np.frombuffer(base64.b64decode(image_b64), np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    img_h, img_w = img.shape[:2]
+
+    # conf=0.01을 추가하여 탐지 확률이 1%라도 일단 무조건 다 잡도록 설정
+    results = model(img, conf=0.01)
+    
+    # 도메인 모델(ObjectDetection)을 활용하여 탐지 결과 조립
+    detection_items = []
+    for r in results:
+        for box in r.boxes:
+            class_id = int(box.cls)
+            conf = float(box.conf)
+            
+            x1, y1, x2, y2 = box.xyxy[0].tolist() 
+            w = x2 - x1
+            h = y2 - y1
+
+            nx = x1 / img_w
+            ny = y1 / img_h
+            nw = w / img_w
+            nh = h / img_h
+
+            nx = max(0.0, min(1.0, nx))
+            ny = max(0.0, min(1.0, ny))
+            nw = max(0.0, min(1.0 - nx, nw)) # bbox_x + bbox_width 가 절대 1을 못 넘게!
+            nh = max(0.0, min(1.0 - ny, nh)) # bbox_y + bbox_height 가 절대 1을 못 넘게!
+
+            class_name = model.names.get(class_id, f"UNKNOWN_{class_id}")
+            
+            # 여기서 Pydantic 모델 생성 (타입 및 0~1 비율 자동 검증됨)
+            detection_obj = ObjectDetection(
+                className=class_name,
+                confidence=round(conf, 5), # 소수점 넉넉히 보존
+                bbox=[nx, ny, nw, nh]
+            )
+            detection_items.append(detection_obj)
+            
+    # 분석 결과가 그려진 이미지(Annotated Image) 생성
+    res_plotted = results[0].plot()
+    _, buffer = cv2.imencode('.jpg', res_plotted)
+    annotated_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
+    
+    # 최종 결과를 InspectionResponse 모델로 포장한 뒤 딕셔너리로 내보내기
+    response_obj = InspectionResponse(
+        message="이미지 분석이 완료되었습니다.",
+        detections=detection_items,
+        annotatedImage=annotated_base64
+    )
+    
+    return response_obj.model_dump()
+
 
 def analyze_image(payload: InspectionRequest) -> InspectionResponse:
     try:

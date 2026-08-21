@@ -24,3 +24,8 @@ def save_inspection_record(
     auth=Depends(current_auth),
 ):
     return inspection_service.save_inspection(payload, auth[0])
+
+# 분석 버튼 누를 시
+@router.post("/histories/{inspection_id}/analyze")
+def analyze_existing_inspection(inspection_id: int, auth=Depends(current_auth)):
+    return inspection_service.reanalyze_inspection(inspection_id, auth[0])
