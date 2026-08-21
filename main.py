@@ -89,11 +89,8 @@ app.include_router(analytics_controller.router)
 app.include_router(analytics_insight_controller.router)
 app.include_router(favorite_controller.router)
 app.include_router(history_controller.router)
-<<<<<<< Updated upstream
 app.include_router(waste_type_controller.router)
-=======
 app.include_router(waste_controller.router)
->>>>>>> Stashed changes
 
 # ---------------------------------------------------------
 # 서버 구동 상태 확인용 루트 엔드포인트
