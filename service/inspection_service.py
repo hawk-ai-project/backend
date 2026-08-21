@@ -1,18 +1,72 @@
+# backend/service/inspection_service.py
+
 import json
+import base64
+import numpy as np
+import cv2
 
+from ultralytics import YOLO
 from fastapi import HTTPException, status
-
-from client import ai_client
+# from client import ai_client
 from domain.inspection import InspectionCreateRequest, InspectionRequest, InspectionResponse, InspectionSaveRequest
 from repository import inspection_repository
 from service import ai_error_service, file_service, geocoding_service
 
+# YOLO AI 모델 로드
+# 임시로 sample용 .pt 파일 적용
+model = YOLO("tests/best.pt")
+
+WASTE_MAP = {
+    0: 1,   # YOLO 클래스 0번 = DB 폐기물 ID 1번
+    1: 2,
+}
+
+# --- [추가됨: YOLO 추론 전용 헬퍼 함수] ---
+def _run_yolo_detection(image_b64: str) -> dict:
+    analysis = {"detections": [], "annotatedImage": None}
+    
+    # Base64 처리 및 이미지 디코딩
+    if "," in image_b64:
+        image_b64 = image_b64.split(',')[1]
+        
+    nparr = np.frombuffer(base64.b64decode(image_b64), np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    # YOLO 탐지
+    results = model(img)
+    
+    # 결과 파싱
+    detections = []
+    for r in results:
+        for box in r.boxes:
+            class_id = int(box.cls)
+            conf = float(box.conf)
+            x, y, w, h = box.xywh[0].tolist()
+
+            detections.append({
+                "waste_type_id": WASTE_MAP.get(class_id, 1),
+                "count": 1,
+                "confidence": round(conf, 2),
+                "bbox_x": int(x),
+                "bbox_y": int(y),
+                "bbox_w": int(w),
+                "bbox_h": int(h)
+            })
+    analysis["detections"] = detections
+    
+    # 박스 그려진 이미지(annotatedImage) 생성
+    res_plotted = results[0].plot()
+    _, buffer = cv2.imencode('.jpg', res_plotted)
+    analysis["annotatedImage"] = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
+    
+    return analysis
+
 
 def analyze_image(payload: InspectionRequest) -> InspectionResponse:
     try:
-        result = ai_client.detect_image(payload.image)
+        result = _run_yolo_detection(payload.image)
         return InspectionResponse.model_validate(result)
-    except ai_client.AIServerError as error:
+    except Exception as error:
         raise ai_error_service.to_http_exception(error) from error
     except ValueError as error:
         raise HTTPException(
@@ -65,8 +119,8 @@ def _create_inspection_with_image(
 ) -> dict:
     analysis_unavailable = False
     try:
-        analysis = ai_client.detect_image(payload.image)
-    except ai_client.AIServerError as error:
+        analysis = _run_yolo_detection(payload.image)
+    except Exception as error:
         # Do not discard a field inspection just because AI is temporarily down.
         analysis = {"detections": []}
         analysis_unavailable = True
