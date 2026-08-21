@@ -20,3 +20,5 @@ __pycache__/
 # AI inference code and model assets live on the dedicated GPU server.
 AI/
 *.safetensors
+
+*.log
