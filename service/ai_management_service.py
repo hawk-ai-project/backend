@@ -2,6 +2,7 @@ import math
 
 from fastapi import HTTPException
 
+from client import ai_client
 from repository import ai_management_repository as repository
 
 
@@ -44,6 +45,20 @@ def create_missed(payload, admin_id):
 
 def get_statistics():
     return repository.statistics()
+
+
+def get_models():
+    return ai_client.get_ai_models()
+
+
+def select_model(model_id: str):
+    if not model_id.strip():
+        raise HTTPException(422, "Model ID is required.")
+    return ai_client.select_ai_model(model_id)
+
+
+def get_system():
+    return ai_client.get_ai_system()
 
 
 def get_classes():

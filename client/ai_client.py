@@ -119,6 +119,31 @@ def _post_json(
         _log_result(request_id, endpoint, status, started)
 
 
+def _get_json(
+    endpoint: str,
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> dict[str, Any]:
+    request_id = uuid4().hex
+    started = perf_counter()
+    status: int | str = "network_error"
+    try:
+        with httpx.Client(trust_env=False, timeout=_timeout(), transport=transport) as client:
+            response = client.get(f"{settings.ai_server_url}{endpoint}")
+        status = response.status_code
+        _raise_for_status(response)
+        return _decode_json(response)
+    except httpx.TimeoutException as error:
+        status = "timeout"
+        raise AITimeoutError() from error
+    except httpx.ConnectError as error:
+        raise AIConnectionError() from error
+    except httpx.HTTPError as error:
+        raise AIConnectionError("AI 서버 통신에 실패했습니다.") from error
+    finally:
+        _log_result(request_id, endpoint, status, started)
+
+
 def _sanitize_remote_action(value: Any) -> dict[str, str] | None:
     if not isinstance(value, dict):
         return None
@@ -225,3 +250,15 @@ def detect_image(
         raise AIConnectionError("AI 서버 통신에 실패했습니다.") from error
     finally:
         _log_result(request_id, endpoint, status, started)
+
+
+def get_ai_models(*, transport: httpx.BaseTransport | None = None) -> dict[str, Any]:
+    return _get_json("/api/ai/admin/models", transport=transport)
+
+
+def select_ai_model(model_id: str, *, transport: httpx.BaseTransport | None = None) -> dict[str, Any]:
+    return _post_json(f"/api/ai/admin/models/{model_id}/select", {}, transport=transport)
+
+
+def get_ai_system(*, transport: httpx.BaseTransport | None = None) -> dict[str, Any]:
+    return _get_json("/api/ai/admin/system", transport=transport)

@@ -39,6 +39,21 @@ def statistics(_admin=Depends(current_admin)):
     return ai_management_service.get_statistics()
 
 
+@router.get("/models")
+def models(_admin=Depends(current_admin)):
+    return ai_management_service.get_models()
+
+
+@router.post("/models/{model_id:path}/select")
+def select_model(model_id: str, _admin=Depends(current_admin)):
+    return ai_management_service.select_model(model_id)
+
+
+@router.get("/system")
+def system(_admin=Depends(current_admin)):
+    return ai_management_service.get_system()
+
+
 @router.get("/classes")
 def classes(_admin=Depends(current_admin)):
     return ai_management_service.get_classes()
