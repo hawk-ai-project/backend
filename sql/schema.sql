@@ -182,18 +182,19 @@ CREATE TABLE `inspection_images` (
 -- AI 분석과 객체 탐지
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS waste_types (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '폐기물 유형 고유 식별자',
-    code            VARCHAR(50) NOT NULL COMMENT 'AI 모델에서 사용하는 클래스 코드',
-    name_ko         VARCHAR(100) NOT NULL COMMENT '폐기물 유형 한글 이름',
-    name_en         VARCHAR(100) NULL COMMENT '폐기물 유형 영문 이름',
-    description     VARCHAR(500) NULL COMMENT '폐기물 유형 상세 설명',
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE COMMENT '폐기물 유형 사용 여부',
-    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '폐기물 유형 생성 일시',
-    PRIMARY KEY (id),
-    UNIQUE KEY uq_waste_types_code (code),
-    UNIQUE KEY uq_waste_types_name_ko (name_ko)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI가 분류하는 폐기물 유형 정보';
+CREATE TABLE `waste_types` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '폐기물 유형 고유 식별자',
+  `code` varchar(50) NOT NULL COMMENT 'AI 모델에서 사용하는 클래스 코드',
+  `name_ko` varchar(100) NOT NULL COMMENT '폐기물 유형 한글 이름',
+  `name_en` varchar(100) DEFAULT NULL COMMENT '폐기물 유형 영문 이름',
+  `description` varchar(500) DEFAULT NULL COMMENT '폐기물 유형 상세 설명',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1' COMMENT '폐기물 유형 사용 여부',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '폐기물 유형 생성 일시',
+  `sort_order` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_waste_types_code` (`code`),
+  UNIQUE KEY `uq_waste_types_name_ko` (`name_ko`)
+) ENGINE=InnoDB AUTO_INCREMENT=34 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI가 분류하는 폐기물 유형 정보'
 
 CREATE TABLE IF NOT EXISTS detection_runs (
     id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'AI 탐지 실행 고유 식별자',

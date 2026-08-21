@@ -3,8 +3,13 @@ from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+<<<<<<< Updated upstream
 from controller import admin_controller, ai_management_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller
 from controller import admin_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller, favorite_controller, history_controller, waste_type_controller
+=======
+from controller import admin_controller, ai_management_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller, waste_controller
+from controller import admin_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller, favorite_controller, history_controller
+>>>>>>> Stashed changes
 from service.auth_service import AuthError
 from service import activity_service
 
@@ -84,7 +89,11 @@ app.include_router(analytics_controller.router)
 app.include_router(analytics_insight_controller.router)
 app.include_router(favorite_controller.router)
 app.include_router(history_controller.router)
+<<<<<<< Updated upstream
 app.include_router(waste_type_controller.router)
+=======
+app.include_router(waste_controller.router)
+>>>>>>> Stashed changes
 
 # ---------------------------------------------------------
 # 서버 구동 상태 확인용 루트 엔드포인트
