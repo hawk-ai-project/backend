@@ -3,13 +3,26 @@ from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-<<<<<<< Updated upstream
-from controller import admin_controller, ai_management_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller
-from controller import admin_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller, favorite_controller, history_controller, waste_type_controller
-=======
-from controller import admin_controller, ai_management_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller, waste_controller
-from controller import admin_controller, analytics_controller, analytics_insight_controller, auth_controller, board_controller, chat_controller, file_controller, hokeytoon_controller, inspection_controller, menu_controller, question_controller, favorite_controller, history_controller
->>>>>>> Stashed changes
+
+from controller import (
+    admin_controller,
+    ai_management_controller,
+    analytics_controller,
+    analytics_insight_controller,
+    auth_controller,
+    board_controller,
+    chat_controller,
+    favorite_controller,
+    file_controller,
+    history_controller,
+    hokeytoon_controller,
+    inspection_controller,
+    menu_controller,
+    question_controller,
+    waste_controller,
+    waste_type_controller,
+)
+
 from service.auth_service import AuthError
 from service import activity_service
 
@@ -75,22 +88,22 @@ async def activity_monitoring(request: Request, call_next):
             )
 
 # 라우터 등록
-app.include_router(question_controller.router)
-app.include_router(board_controller.router)
-app.include_router(hokeytoon_controller.router)
-app.include_router(menu_controller.router)
-app.include_router(auth_controller.router)
 app.include_router(admin_controller.router)
 app.include_router(ai_management_controller.router)
-app.include_router(file_controller.router)
-app.include_router(chat_controller.router)
-app.include_router(inspection_controller.router)
 app.include_router(analytics_controller.router)
 app.include_router(analytics_insight_controller.router)
+app.include_router(auth_controller.router)
+app.include_router(board_controller.router)
+app.include_router(chat_controller.router)
 app.include_router(favorite_controller.router)
+app.include_router(file_controller.router)
 app.include_router(history_controller.router)
-app.include_router(waste_type_controller.router)
+app.include_router(hokeytoon_controller.router)
+app.include_router(inspection_controller.router)
+app.include_router(menu_controller.router)
+app.include_router(question_controller.router)
 app.include_router(waste_controller.router)
+app.include_router(waste_type_controller.router)
 
 # ---------------------------------------------------------
 # 서버 구동 상태 확인용 루트 엔드포인트
