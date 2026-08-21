@@ -256,9 +256,20 @@ def get_ai_models(*, transport: httpx.BaseTransport | None = None) -> dict[str, 
     return _get_json("/api/ai/admin/models", transport=transport)
 
 
+def get_ai_model_detail(model_id: str, *, transport: httpx.BaseTransport | None = None) -> dict[str, Any]:
+    return _get_json(f"/api/ai/admin/models/{model_id}", transport=transport)
+
+
 def select_ai_model(model_id: str, *, transport: httpx.BaseTransport | None = None) -> dict[str, Any]:
     return _post_json(f"/api/ai/admin/models/{model_id}/select", {}, transport=transport)
 
 
 def get_ai_system(*, transport: httpx.BaseTransport | None = None) -> dict[str, Any]:
     return _get_json("/api/ai/admin/system", transport=transport)
+
+
+def get_ai_artifact(relative_path: str, *, transport: httpx.BaseTransport | None = None) -> tuple[bytes, str]:
+    with httpx.Client(trust_env=False, timeout=_timeout(), transport=transport) as client:
+        response = client.get(f"{settings.ai_server_url}/api/ai/admin/artifacts/{relative_path}")
+    _raise_for_status(response)
+    return response.content, response.headers.get("content-type", "application/octet-stream")

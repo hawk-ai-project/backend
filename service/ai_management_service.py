@@ -51,6 +51,10 @@ def get_models():
     return ai_client.get_ai_models()
 
 
+def get_model_detail(model_id: str):
+    return ai_client.get_ai_model_detail(model_id)
+
+
 def select_model(model_id: str):
     if not model_id.strip():
         raise HTTPException(422, "Model ID is required.")
@@ -59,6 +63,10 @@ def select_model(model_id: str):
 
 def get_system():
     return ai_client.get_ai_system()
+
+
+def get_artifact(artifact: str):
+    return ai_client.get_ai_artifact(artifact)
 
 
 def get_classes():
