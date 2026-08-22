@@ -213,3 +213,118 @@ def insert_inspection_record(payload, user_id: int, ai_opinion: str):
         )""",
         (payload.location_name, user_id, payload.title, payload.notes, ai_opinion, payload.status, formatted_time, formatted_time, formatted_time)
     )
+
+
+def _reinspection_permission(is_admin: bool) -> str:
+    return "" if is_admin else "AND i.inspector_id = %s"
+
+
+def find_reinspection_targets(user_id: int, is_admin: bool) -> list[dict[str, Any]]:
+    permission = _reinspection_permission(is_admin)
+    params = () if is_admin else (user_id,)
+    rows = fetch_query(
+        f"""SELECT i.id AS inspectionId, i.title, l.name AS location,
+        i.captured_at AS capturedAt, i.status, u.name AS inspectorName,
+        r.id AS runId, r.model_name AS modelName, r.model_version AS modelVersion,
+        r.annotated_image_id AS annotatedImageId
+        FROM inspections i
+        LEFT JOIN locations l ON l.id=i.location_id
+        LEFT JOIN users u ON u.id=i.inspector_id
+        LEFT JOIN detection_runs r ON r.id=(SELECT rr.id FROM detection_runs rr
+          WHERE rr.inspection_id=i.id AND rr.status='SUCCEEDED' ORDER BY rr.id DESC LIMIT 1)
+        WHERE i.deleted_at IS NULL AND i.status='DRAFT' {permission}
+        ORDER BY i.captured_at DESC, i.id DESC""", params,
+    )
+    items = rows if isinstance(rows, list) else []
+    for item in items:
+        item["detections"] = find_reinspection_detections(item.get("runId"))
+    return items
+
+
+def find_reinspection_detections(run_id: int | None) -> list[dict[str, Any]]:
+    if not run_id:
+        return []
+    rows = fetch_query(
+        """SELECT d.id, COALESCE(awt.name_ko, wt.name_ko) AS className,
+        d.confidence, d.bbox_x AS bboxX, d.bbox_y AS bboxY,
+        d.bbox_width AS bboxWidth, d.bbox_height AS bboxHeight
+        FROM detections d JOIN waste_types wt ON wt.id=d.waste_type_id
+        LEFT JOIN waste_types awt ON awt.id=d.actual_waste_type_id
+        WHERE d.detection_run_id=%s ORDER BY d.id""", (run_id,),
+    )
+    return rows if isinstance(rows, list) else []
+
+
+def find_reinspection_detail(inspection_id: int, user_id: int, is_admin: bool) -> dict[str, Any] | None:
+    permission = _reinspection_permission(is_admin)
+    params = (inspection_id,) if is_admin else (inspection_id, user_id)
+    row = fetch_query(
+        f"""SELECT i.id AS inspectionId, i.title, l.name AS location,
+        i.captured_at AS capturedAt, i.status, r.id AS runId,
+        r.model_name AS modelName, r.model_version AS modelVersion
+        FROM inspections i LEFT JOIN locations l ON l.id=i.location_id
+        LEFT JOIN detection_runs r ON r.id=(SELECT rr.id FROM detection_runs rr
+          WHERE rr.inspection_id=i.id AND rr.status='SUCCEEDED' ORDER BY rr.id DESC LIMIT 1)
+        WHERE i.id=%s AND i.deleted_at IS NULL AND i.status='DRAFT' {permission}""", params, one=True,
+    )
+    if not isinstance(row, dict):
+        return None
+    row["detections"] = find_reinspection_detections(row.get("runId"))
+    return row
+
+
+def approve_reinspection_targets(inspection_ids: list[int], user_id: int, is_admin: bool) -> int:
+    placeholders = ",".join(["%s"] * len(inspection_ids))
+    permission = "" if is_admin else "AND inspector_id=%s"
+    params: list[Any] = list(inspection_ids)
+    if not is_admin:
+        params.append(user_id)
+    return execute_query(
+        f"""UPDATE inspections SET status='REVIEW_REQUIRED', updated_at=UTC_TIMESTAMP(6)
+        WHERE id IN ({placeholders}) AND status='DRAFT' AND deleted_at IS NULL {permission}""", tuple(params),
+    )
+
+
+def find_active_waste_types() -> list[dict[str, Any]]:
+    rows = fetch_query("SELECT id, code, name_ko AS name FROM waste_types WHERE is_active=TRUE ORDER BY sort_order, name_ko")
+    return rows if isinstance(rows, list) else []
+
+
+def save_reinspection_annotations(inspection_id: int, boxes, deleted_ids: list[int], reviewer_id: int) -> None:
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM detection_runs WHERE inspection_id=%s AND status='SUCCEEDED' ORDER BY id DESC LIMIT 1", (inspection_id,))
+            run = cursor.fetchone()
+            if not run:
+                raise ValueError("성공한 AI 분석 결과가 없습니다.")
+            run_id = int(run[0])
+            for detection_id in deleted_ids:
+                cursor.execute("DELETE FROM detections WHERE id=%s AND detection_run_id=%s", (detection_id, run_id))
+            for box in boxes:
+                name = box.className.strip()
+                code = name.upper().replace(" ", "_")[:50]
+                cursor.execute("""INSERT INTO waste_types (code,name_ko,name_en) VALUES (%s,%s,%s)
+                    ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)""", (code,name[:100],name[:100]))
+                waste_type_id = int(cursor.lastrowid)
+                values = [float(value) for value in box.bbox]
+                if box.id is not None and box.id > 0:
+                    cursor.execute("""UPDATE detections SET actual_waste_type_id=%s,
+                        bbox_x=%s,bbox_y=%s,bbox_width=%s,bbox_height=%s,
+                        review_result='TRUE_POSITIVE',review_status='REVIEWED',
+                        reviewed_by=%s,reviewed_at=UTC_TIMESTAMP(6)
+                        WHERE id=%s AND detection_run_id=%s""",
+                        (waste_type_id,*values,reviewer_id,box.id,run_id))
+                else:
+                    cursor.execute("""INSERT INTO detections
+                        (detection_run_id,waste_type_id,confidence,bbox_x,bbox_y,bbox_width,bbox_height,
+                         review_result,review_status,actual_waste_type_id,error_reason,retraining_candidate,reviewed_by,reviewed_at)
+                        VALUES (%s,%s,0,%s,%s,%s,%s,'FALSE_NEGATIVE','REVIEWED',%s,
+                                '재점검 수동 라벨링',TRUE,%s,UTC_TIMESTAMP(6))""",
+                        (run_id,waste_type_id,*values,waste_type_id,reviewer_id))
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()

@@ -90,7 +90,7 @@ def _create_inspection_with_image(
         user["id"],
         payload.title.strip(),
         payload.notes,
-        "DRAFT" if analysis_unavailable else status,
+        "FAILED" if analysis_unavailable else status,
     )
     original_image_id = inspection_repository.create_inspection_image(inspection_id, "ORIGINAL", original)
     annotated_image_id = None
@@ -170,4 +170,51 @@ def save_inspection(payload: InspectionSaveRequest, user: dict) -> dict:
         latitude=latitude,
         longitude=longitude,
     )
-    return _create_inspection_with_image(request, user, status=payload.status)
+    return _create_inspection_with_image(request, user, status="DRAFT")
+
+
+def get_reinspection_targets(user: dict) -> list[dict]:
+    return inspection_repository.find_reinspection_targets(
+        user["id"], user.get("role") == "ADMIN"
+    )
+
+
+def approve_reinspection_targets(inspection_ids: list[int], user: dict) -> dict:
+    unique_ids = list(dict.fromkeys(inspection_ids))
+    if not unique_ids:
+        raise HTTPException(status_code=422, detail="승인할 점검을 선택해주세요.")
+    affected = inspection_repository.approve_reinspection_targets(
+        unique_ids, user["id"], user.get("role") == "ADMIN"
+    )
+    if affected != len(unique_ids):
+        raise HTTPException(status_code=409, detail="점검 대기 상태가 아니거나 접근할 수 없는 항목이 포함되어 있습니다.")
+    return {"selectedCount": len(unique_ids), "affectedCount": affected, "status": "REVIEW_REQUIRED"}
+
+
+def get_reinspection_detail(inspection_id: int, user: dict) -> dict:
+    detail = inspection_repository.find_reinspection_detail(
+        inspection_id, user["id"], user.get("role") == "ADMIN"
+    )
+    if not detail:
+        raise HTTPException(status_code=404, detail="재점검 대상을 찾을 수 없습니다.")
+    return detail
+
+
+def get_reinspection_classes() -> list[dict]:
+    return inspection_repository.find_active_waste_types()
+
+
+def save_reinspection_annotations(inspection_id: int, payload, user: dict) -> dict:
+    detail = inspection_repository.find_reinspection_detail(
+        inspection_id, user["id"], user.get("role") == "ADMIN"
+    )
+    if not detail:
+        raise HTTPException(status_code=404, detail="재점검 대상을 찾을 수 없습니다.")
+    for box in payload.boxes:
+        x, y, width, height = box.bbox
+        if min(box.bbox) < 0 or max(box.bbox) > 1 or width <= 0 or height <= 0 or x + width > 1 or y + height > 1:
+            raise HTTPException(status_code=422, detail="Bounding Box 좌표는 0~1 범위여야 합니다.")
+    inspection_repository.save_reinspection_annotations(
+        inspection_id, payload.boxes, payload.deletedIds, user["id"]
+    )
+    return get_reinspection_detail(inspection_id, user)
