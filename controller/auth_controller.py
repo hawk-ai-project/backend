@@ -59,7 +59,11 @@ def login(payload: LoginRequest, request: Request, response: Response):
     )
     request.state.activity_user_id = result["user"]["id"]
     request.state.activity_session_id = auth_service.decode_token(result["accessToken"])["sid"]
-    _set_refresh_cookie(request, response, result.pop("refreshToken"), result.pop("refreshMaxAge"))
+    refresh_token = result["refreshToken"]
+    refresh_max_age = result.pop("refreshMaxAge")
+    if request.headers.get("x-client-type", "").lower() != "mobile":
+        result.pop("refreshToken")
+        _set_refresh_cookie(request, response, refresh_token, refresh_max_age)
     return result
 
 
@@ -68,7 +72,9 @@ def refresh_session(
     request: Request,
     response: Response,
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE),
+    mobile_refresh_token: str | None = Header(default=None, alias="X-Refresh-Token"),
 ):
+    refresh_token = mobile_refresh_token or refresh_token
     if not refresh_token:
         raise auth_service.AuthError("로그인이 만료되었습니다.")
     result = auth_service.refresh(
@@ -77,7 +83,11 @@ def refresh_session(
     )
     request.state.activity_user_id = result["user"]["id"]
     request.state.activity_session_id = auth_service.decode_token(result["accessToken"])["sid"]
-    _set_refresh_cookie(request, response, result.pop("refreshToken"), result.pop("refreshMaxAge"))
+    next_refresh_token = result["refreshToken"]
+    refresh_max_age = result.pop("refreshMaxAge")
+    if mobile_refresh_token is None:
+        result.pop("refreshToken")
+        _set_refresh_cookie(request, response, next_refresh_token, refresh_max_age)
     return result
 
 
@@ -133,7 +143,9 @@ def logout(
     response: Response,
     authorization: str | None = Header(default=None),
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE),
+    mobile_refresh_token: str | None = Header(default=None, alias="X-Refresh-Token"),
 ):
+    refresh_token = mobile_refresh_token or refresh_token
     if authorization and authorization.startswith("Bearer "):
         try:
             claims = auth_service.decode_token(authorization[7:].strip())

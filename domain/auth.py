@@ -32,6 +32,7 @@ class UserResponse(BaseModel):
 
 class AuthResponse(BaseModel):
     accessToken: str
+    refreshToken: str | None = None
     tokenType: str = "bearer"
     user: UserResponse
 
