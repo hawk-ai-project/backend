@@ -102,15 +102,21 @@ def assign_inspection(inspection_id: int, assignee_id: int, created_by: int) -> 
             WHERE id = %s
         """
         execute_query(update_sql, (assignee_id, existing["id"]))
-        return
+    else:
+        insert_sql = """
+            INSERT INTO inspection_actions /* assign_inspection.insert_sql */
+            (inspection_id, assignee_id, created_by, action_type, status, description)
+            VALUES (%s, %s, %s, 'COLLECTION_REQUEST', 'OPEN', '현장 수거 담당자 배정')
+        """
+        execute_query(insert_sql, (inspection_id, assignee_id, created_by))
 
-    insert_sql = """
-        INSERT INTO inspection_actions /* assign_inspection.insert_sql */
-        (inspection_id, assignee_id, created_by, action_type, status, description)
-        VALUES (%s, %s, %s, 'COLLECTION_REQUEST', 'OPEN', '현장 수거 담당자 배정')
-    """
-    execute_query(insert_sql, (inspection_id, assignee_id, created_by))
-
+    execute_query(
+        """UPDATE inspections
+           SET status = 'ACTION_REQUIRED', updated_at = UTC_TIMESTAMP(6)
+           WHERE id = %s AND deleted_at IS NULL
+             AND status <> 'RESOLVED'""",
+        (inspection_id,),
+    )
 
 def update_notes(inspection_id: int, notes: str) -> None:
     """

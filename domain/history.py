@@ -34,3 +34,4 @@ class InspectionAssignmentRequest(BaseModel):
 class InspectionAssignmentResponse(BaseModel):
     inspectionId: int
     assignee: InspectionAssignee
+    status: str

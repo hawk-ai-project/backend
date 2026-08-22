@@ -84,7 +84,7 @@ def assign_history(inspection_id: int, assignee_id: int, user: dict) -> dict:
         )
 
     history_repository.assign_inspection(inspection_id, assignee_id, user["id"])
-    return {"inspectionId": inspection_id, "assignee": assignee}
+    return {"inspectionId": inspection_id, "assignee": assignee, "status": "ACTION_REQUIRED"}
 
 
 def update_notes(inspection_id: int, notes: str, user: dict) -> dict:
