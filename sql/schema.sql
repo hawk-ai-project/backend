@@ -587,3 +587,81 @@ ON DUPLICATE KEY UPDATE name_ko = VALUES(name_ko), name_en = VALUES(name_en);
 -- * 게시글 저장: boards + tags upsert + board_tags를 한 트랜잭션으로 처리한다.
 -- * 조회수: UPDATE boards SET view_count = view_count + 1 WHERE id = ? 로 원자 증가시킨다.
 -- * 삭제: users/boards/inspections는 deleted_at 기반 soft delete, 종속 분석 데이터는 FK cascade를 사용한다.
+
+-- AI model catalog
+-- AI experiment catalog, per-class evaluation metrics, and latest GPU device state.
+CREATE TABLE IF NOT EXISTS ai_models (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    external_id VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    run_path VARCHAR(500) NULL,
+    runs_directory VARCHAR(1000) NULL,
+    base_model VARCHAR(255) NULL,
+    optimizer VARCHAR(100) NULL,
+    epochs INT NULL,
+    image_size INT NULL,
+    batch_size INT NULL,
+    device VARCHAR(100) NULL,
+    precision_score DECIMAL(10,8) NULL,
+    recall_score DECIMAL(10,8) NULL,
+    map50 DECIMAL(10,8) NULL,
+    map50_95 DECIMAL(10,8) NULL,
+    train_box_loss DECIMAL(12,8) NULL,
+    val_box_loss DECIMAL(12,8) NULL,
+    has_weights BOOLEAN NOT NULL DEFAULT FALSE,
+    weight_path VARCHAR(1000) NULL,
+    artifact_count INT UNSIGNED NOT NULL DEFAULT 0,
+    is_selected BOOLEAN NOT NULL DEFAULT FALSE,
+    source_updated_at DATETIME NULL,
+    config_json JSON NULL,
+    artifacts_json JSON NULL,
+    files_json JSON NULL,
+    last_synced_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_ai_models_external_id (external_id),
+    KEY ix_ai_models_selected_metrics (is_selected, map50_95 DESC, map50 DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI 학습 실험 및 모델 카탈로그';
+
+CREATE TABLE IF NOT EXISTS ai_model_class_metrics (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    model_id BIGINT UNSIGNED NOT NULL,
+    class_name VARCHAR(100) NOT NULL,
+    class_index INT NULL,
+    accuracy DECIMAL(10,8) NULL COMMENT 'TP/(TP+FP+FN)',
+    precision_score DECIMAL(10,8) NULL,
+    recall_score DECIMAL(10,8) NULL,
+    map50 DECIMAL(10,8) NULL,
+    map50_95 DECIMAL(10,8) NULL,
+    true_positives INT UNSIGNED NULL,
+    false_positives INT UNSIGNED NULL,
+    false_negatives INT UNSIGNED NULL,
+    support INT UNSIGNED NULL,
+    measured_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_ai_model_class (model_id, class_name),
+    KEY ix_ai_model_class_accuracy (class_name, accuracy DESC),
+    CONSTRAINT fk_ai_model_class_model FOREIGN KEY (model_id) REFERENCES ai_models (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI 모델별 탐지 클래스 평가 지표';
+
+CREATE TABLE IF NOT EXISTS ai_gpu_devices (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    host_name VARCHAR(255) NOT NULL,
+    device_index INT NOT NULL,
+    device_name VARCHAR(255) NULL,
+    temperature_c DECIMAL(8,2) NULL,
+    utilization_percent DECIMAL(8,2) NULL,
+    memory_total_mib DECIMAL(14,2) NULL,
+    memory_used_mib DECIMAL(14,2) NULL,
+    memory_free_mib DECIMAL(14,2) NULL,
+    power_draw_w DECIMAL(10,2) NULL,
+    power_limit_w DECIMAL(10,2) NULL,
+    cuda_available BOOLEAN NOT NULL DEFAULT FALSE,
+    system_timestamp DATETIME NULL,
+    last_synced_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_ai_gpu_host_device (host_name, device_index)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI 서버 GPU 장치 최신 상태';

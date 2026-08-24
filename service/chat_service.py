@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from client import ai_client
-from repository import chat_repository
+from repository import chat_repository, model_catalog_repository
 from service import ai_error_service
 
 
@@ -152,6 +152,17 @@ def _faq_keyword_match(message: str, faqs: list[dict]) -> dict | None:
     score, faq = ranked[0]
     return faq if score >= 2 else None
 
+
+def _is_model_recommendation(message: str) -> bool:
+    normalized = " ".join(message.lower().split())
+    model_terms = ("모델", "yolo", "model")
+    recommendation_terms = (
+        "추천", "어떤", "무슨", "골라", "선택", "비교", "정확", "성능", "가장 좋은",
+        "recommend", "which", "best", "compare", "accuracy", "performance",
+    )
+    return any(term in normalized for term in model_terms) and any(
+        term in normalized for term in recommendation_terms
+    )
 
 def _is_project_question(message: str) -> bool:
     normalized = message.lower()
@@ -359,6 +370,18 @@ def chat(
                 generated["action"],
             )
         return _result(_history_template(rows), "INSPECTION_HISTORY", "INSPECTION_DB", started, sources, len(rows), history_actions)
+
+    if _is_model_recommendation(message):
+        context = model_catalog_repository.model_recommendation_context()
+        generated = _generate(context, message, history or [])
+        return _result(
+            generated["answer"],
+            "MODEL_RECOMMENDATION",
+            "AI_MODEL_DB",
+            started,
+            remote_intent=generated.get("intent") or "MODEL_RECOMMENDATION",
+            remote_action=generated.get("action"),
+        )
 
     if _is_project_question(message):
         answer = _project_template(message, _load_json("project_info.json"))

@@ -139,3 +139,14 @@ def test_board_timeout_maps_to_504_without_affecting_crud():
         with pytest.raises(HTTPException) as caught:
             board_service.generate_board_draft(payload)
     assert caught.value.status_code == 504
+
+def test_model_recommendation_uses_database_context():
+    context = "DB model catalog with class accuracy"
+    generated = {"answer": "use model-a", "intent": "MODEL_RECOMMENDATION", "action": None}
+    with patch.object(chat_service.model_catalog_repository, "model_recommendation_context", return_value=context) as repository:
+        with patch.object(chat_service.ai_client, "generate_chat", return_value=generated) as remote:
+            result = chat_service.chat("어떤 YOLO 모델을 쓰면 좋아?", None)
+    repository.assert_called_once_with()
+    assert remote.call_args.args[:2] == (context, "어떤 YOLO 모델을 쓰면 좋아?")
+    assert result["sourceType"] == "AI_MODEL_DB"
+    assert result["type"] == "MODEL_RECOMMENDATION"

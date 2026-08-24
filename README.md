@@ -218,3 +218,14 @@ The unit suite uses `httpx.MockTransport` for successful responses, fallback
 fields, navigation validation, timeouts, connection failures, malformed JSON,
 missing fields, FAQ/project fast paths, authorization boundaries, filtered DB
 context, and board draft behavior.
+## AI model catalog database
+
+Apply `sql/ai_model_catalog.sql` to an existing MySQL database. New databases receive the same tables from `sql/schema.sql`.
+
+- `ai_models` stores experiment configuration, aggregate metrics, artifacts, weights, and selected state.
+- `ai_model_class_metrics` stores validation or operational-review accuracy per detection class. Accuracy is `TP / (TP + FP + FN)`.
+- `ai_gpu_devices` stores the latest state per host and GPU index; repeated 5-second polling updates the same row instead of creating an unbounded history.
+
+The AI management model and system endpoints upsert the catalog automatically. New training runs should write `class_metrics.json`; the bundled `ai-serving/YOLO/train.py` now creates it at the end of training. When historical runs do not have that artifact, reviewed production detections are used as a fallback and marked `OPERATIONAL_REVIEW`.
+
+Model recommendation questions in chat use only the synchronized database catalog and per-class metrics as LLM context.

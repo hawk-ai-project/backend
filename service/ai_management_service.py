@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from client import ai_client
 from repository import ai_management_repository as repository
+from repository import model_catalog_repository
 
 
 def _validate_bbox(bbox):
@@ -48,21 +49,34 @@ def get_statistics():
 
 
 def get_models():
-    return ai_client.get_ai_models()
+    catalog = ai_client.get_ai_models()
+    model_catalog_repository.sync_model_catalog(catalog)
+    model_catalog_repository.sync_reviewed_class_metrics()
+    return catalog
 
 
 def get_model_detail(model_id: str):
-    return ai_client.get_ai_model_detail(model_id)
+    model_catalog_repository.sync_model_catalog(ai_client.get_ai_models())
+    detail = ai_client.get_ai_model_detail(model_id)
+    model_catalog_repository.sync_model_detail(detail)
+    model_catalog_repository.sync_reviewed_class_metrics()
+    detail["classMetrics"] = model_catalog_repository.find_model_class_metrics(model_id)
+    return detail
 
 
 def select_model(model_id: str):
     if not model_id.strip():
         raise HTTPException(422, "Model ID is required.")
-    return ai_client.select_ai_model(model_id)
+    catalog = ai_client.select_ai_model(model_id)
+    model_catalog_repository.sync_model_catalog(catalog)
+    model_catalog_repository.sync_reviewed_class_metrics()
+    return catalog
 
 
 def get_system():
-    return ai_client.get_ai_system()
+    system = ai_client.get_ai_system()
+    model_catalog_repository.sync_gpu_status(system)
+    return system
 
 
 def get_artifact(artifact: str):
