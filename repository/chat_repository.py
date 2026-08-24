@@ -9,7 +9,7 @@ def find_location_names() -> list[str]:
 
 
 def find_waste_names() -> list[str]:
-    rows = fetch_query("SELECT name_ko FROM waste_types WHERE is_active = TRUE ORDER BY LENGTH(name_ko) DESC")
+    rows = fetch_query("SELECT name_ko FROM waste_types WHERE is_active = TRUE ORDER BY id ASC")
     return [row["name_ko"] for row in rows] if isinstance(rows, list) else []
 
 

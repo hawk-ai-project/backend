@@ -2,6 +2,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from repository import chat_repository
 
 from controller.auth_controller import current_auth
 from domain.history import (
@@ -109,3 +110,7 @@ def analyze_inspection_image(
     auth=Depends(current_auth),
 ):
     return history_service.analyze_image(inspection_id, auth[0])
+
+@router.get("/waste-types", response_model=list[str])
+def get_waste_types():
+    return chat_repository.find_waste_names()
