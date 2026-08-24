@@ -5,7 +5,7 @@ import json
 from fastapi import HTTPException, status
 from client import ai_client
 from domain.inspection import InspectionCreateRequest, InspectionRequest, InspectionResponse, InspectionSaveRequest
-from repository import inspection_repository
+from repository import inspection_repository, model_catalog_repository
 from service import ai_error_service, file_service, geocoding_service
 
 def analyze_image(payload: InspectionRequest) -> InspectionResponse:
@@ -218,3 +218,41 @@ def save_reinspection_annotations(inspection_id: int, payload, user: dict) -> di
         inspection_id, payload.boxes, payload.deletedIds, user["id"]
     )
     return get_reinspection_detail(inspection_id, user)
+
+def get_reinspection_model_detail(inspection_id: int, user: dict) -> dict:
+    inspection = get_reinspection_detail(inspection_id, user)
+    catalog = ai_client.get_ai_models()
+    model_catalog_repository.sync_model_catalog(catalog)
+    model_id = inspection.get("modelExternalId")
+    if not model_id:
+        model_name = inspection.get("modelName")
+        matched = next(
+            (model for model in catalog.get("models", [])
+             if model.get("id") == model_name or model.get("name") == model_name),
+            None,
+        )
+        model_id = matched.get("id") if matched else None
+    if not model_id:
+        raise HTTPException(status_code=404, detail="해당 재점검에 사용된 모델 상세 정보를 찾을 수 없습니다.")
+    try:
+        detail = ai_client.get_ai_model_detail(model_id)
+    except Exception as error:
+        raise ai_error_service.to_http_exception(error) from error
+    model_catalog_repository.sync_model_detail(detail)
+    model_catalog_repository.sync_reviewed_class_metrics()
+    detail["classMetrics"] = model_catalog_repository.find_model_class_metrics(model_id)
+    detail["inspectionId"] = inspection_id
+    detail["modelName"] = inspection.get("modelName")
+    detail["modelVersion"] = inspection.get("modelVersion")
+    return detail
+
+
+def get_reinspection_model_artifact(inspection_id: int, artifact: str, user: dict):
+    inspection = get_reinspection_detail(inspection_id, user)
+    model_id = inspection.get("modelExternalId")
+    if not model_id or not artifact.startswith(f"{model_id}/"):
+        raise HTTPException(status_code=404, detail="모델 산출물을 찾을 수 없습니다.")
+    try:
+        return ai_client.get_ai_artifact(artifact)
+    except Exception as error:
+        raise ai_error_service.to_http_exception(error) from error

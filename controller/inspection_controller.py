@@ -1,6 +1,7 @@
 # backend/controller/inspection_controller.py
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from controller.auth_controller import current_auth
 from domain.inspection import (
@@ -61,6 +62,16 @@ def reinspection_classes(_auth=Depends(current_auth)):
     return inspection_service.get_reinspection_classes()
 
 
+
+@router.get("/reinspection-targets/{inspection_id}/model")
+def reinspection_model_detail(inspection_id: int, auth=Depends(current_auth)):
+    return inspection_service.get_reinspection_model_detail(inspection_id, auth[0])
+
+
+@router.get("/reinspection-targets/{inspection_id}/model/artifacts/{artifact:path}")
+def reinspection_model_artifact(inspection_id: int, artifact: str, auth=Depends(current_auth)):
+    content, content_type = inspection_service.get_reinspection_model_artifact(inspection_id, artifact, auth[0])
+    return StreamingResponse(iter([content]), media_type=content_type)
 @router.get("/reinspection-targets/{inspection_id}")
 def reinspection_detail(inspection_id: int, auth=Depends(current_auth)):
     return inspection_service.get_reinspection_detail(inspection_id, auth[0])
