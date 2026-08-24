@@ -141,8 +141,12 @@ def find_inspection_detail(inspection_id: int, user_id: int, is_admin: bool) -> 
         SELECT /* find_inspection_detail_sql */
             i.id,
             COALESCE(i.title, '') AS title,
-            NULL AS location,
-            NULL AS coordinates,
+            l.name AS location,
+            CASE 
+                WHEN l.latitude IS NOT NULL AND l.longitude IS NOT NULL 
+                THEN CONCAT('위도 : ', l.latitude, ', 경도 : ', l.longitude)
+                ELSE NULL 
+            END AS coordinates,
             i.captured_at,
             i.status,
             i.priority,
@@ -154,6 +158,7 @@ def find_inspection_detail(inspection_id: int, user_id: int, is_admin: bool) -> 
             u.name AS inspector_name
         FROM inspections i
         LEFT JOIN users u ON u.id = i.inspector_id
+        LEFT JOIN locations l ON l.id = i.location_id
         WHERE i.id = %s
           AND i.deleted_at IS NULL
           {permission}
