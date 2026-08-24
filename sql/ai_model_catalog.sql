@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS ai_models (
     weight_path VARCHAR(1000) NULL,
     artifact_count INT UNSIGNED NOT NULL DEFAULT 0,
     is_selected BOOLEAN NOT NULL DEFAULT FALSE,
+    is_candidate BOOLEAN NOT NULL DEFAULT FALSE,
     source_updated_at DATETIME NULL,
     config_json JSON NULL,
     artifacts_json JSON NULL,

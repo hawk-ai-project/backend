@@ -75,6 +75,51 @@ def sync_model_catalog(catalog: dict[str, Any]) -> None:
         connection.close()
 
 
+def apply_candidate_flags(catalog: dict[str, Any]) -> dict[str, Any]:
+    rows = fetch_query("SELECT external_id FROM ai_models WHERE is_candidate=TRUE") or []
+    candidate_ids = {row["external_id"] for row in rows}
+    for model in catalog.get("models") or []:
+        model["isCandidate"] = model.get("id") in candidate_ids
+    catalog["candidateModelIds"] = sorted(candidate_ids)
+    return catalog
+
+
+def set_model_candidates(external_ids: list[str], candidate: bool) -> int:
+    unique_ids = list(dict.fromkeys(external_ids))
+    placeholders = ",".join(["%s"] * len(unique_ids))
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE ai_models SET is_candidate=%s,updated_at=UTC_TIMESTAMP(6) WHERE external_id IN ({placeholders})",
+                tuple([candidate, *unique_ids]),
+            )
+            affected = cursor.rowcount
+        connection.commit()
+        return affected
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+def set_model_candidate(external_id: str, candidate: bool) -> bool:
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE ai_models SET is_candidate=%s,updated_at=UTC_TIMESTAMP(6) WHERE external_id=%s",
+                (candidate, external_id),
+            )
+            affected = cursor.rowcount
+        connection.commit()
+        return affected > 0
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
 def sync_model_detail(detail: dict[str, Any]) -> None:
     external_id = detail.get("id")
     if not external_id:
@@ -213,7 +258,7 @@ def sync_gpu_status(system: dict[str, Any]) -> None:
 def find_model_class_metrics(external_id: str) -> list[dict[str, Any]]:
     rows = fetch_query(
         """SELECT cm.class_name AS className,cm.class_index AS classIndex,cm.accuracy,
-        cm.precision_score AS precision,cm.recall_score AS recall,cm.map50,cm.map50_95,
+        cm.precision_score AS `precision`,cm.recall_score AS `recall`,cm.map50,cm.map50_95,
         cm.true_positives AS truePositives,cm.false_positives AS falsePositives,
         cm.false_negatives AS falseNegatives,cm.support,cm.metric_source AS metricSource
         FROM ai_model_class_metrics cm JOIN ai_models m ON m.id=cm.model_id

@@ -52,7 +52,7 @@ def get_models():
     catalog = ai_client.get_ai_models()
     model_catalog_repository.sync_model_catalog(catalog)
     model_catalog_repository.sync_reviewed_class_metrics()
-    return catalog
+    return model_catalog_repository.apply_candidate_flags(catalog)
 
 
 def get_model_detail(model_id: str):
@@ -70,8 +70,25 @@ def select_model(model_id: str):
     catalog = ai_client.select_ai_model(model_id)
     model_catalog_repository.sync_model_catalog(catalog)
     model_catalog_repository.sync_reviewed_class_metrics()
-    return catalog
+    return model_catalog_repository.apply_candidate_flags(catalog)
 
+
+
+def set_model_candidates(model_ids: list[str], candidate: bool):
+    unique_ids = [model_id.strip() for model_id in dict.fromkeys(model_ids) if model_id.strip()]
+    if not unique_ids:
+        raise HTTPException(422, "At least one model ID is required.")
+    affected = model_catalog_repository.set_model_candidates(unique_ids, candidate)
+    if affected != len(unique_ids):
+        raise HTTPException(404, "One or more models were not found.")
+    return get_models()
+
+def set_model_candidate(model_id: str, candidate: bool):
+    if not model_id.strip():
+        raise HTTPException(422, "Model ID is required.")
+    if not model_catalog_repository.set_model_candidate(model_id, candidate):
+        raise HTTPException(404, "Model not found.")
+    return get_models()
 
 def get_system():
     system = ai_client.get_ai_system()

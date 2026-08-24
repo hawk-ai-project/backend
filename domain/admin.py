@@ -248,3 +248,12 @@ class ForbiddenWordToggle(BaseModel):
 class ModerationFlagResolve(BaseModel):
     status: Literal["RESOLVED", "DISMISSED"]
     note: str = Field(default="", max_length=500)
+
+
+class ModelCandidateUpdateRequest(BaseModel):
+    candidate: bool
+
+
+class ModelCandidatesUpdateRequest(BaseModel):
+    modelIds: list[str] = Field(min_length=1, max_length=100)
+    candidate: bool

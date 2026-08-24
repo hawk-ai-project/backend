@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import StreamingResponse
 
 from controller.admin_controller import current_admin
+from domain.admin import ModelCandidateUpdateRequest, ModelCandidatesUpdateRequest
 from domain.inspection import DataBulkActionRequest, DataTagCreateRequest, DetectionReviewRequest, MissedDetectionRequest
 from service import ai_management_service
 
@@ -45,6 +46,10 @@ def models(_admin=Depends(current_admin)):
     return ai_management_service.get_models()
 
 
+
+@router.patch("/models/candidates")
+def update_model_candidates(payload: ModelCandidatesUpdateRequest, _admin=Depends(current_admin)):
+    return ai_management_service.set_model_candidates(payload.modelIds, payload.candidate)
 @router.get("/models/{model_id:path}")
 def model_detail(model_id: str, _admin=Depends(current_admin)):
     return ai_management_service.get_model_detail(model_id)
@@ -55,6 +60,10 @@ def select_model(model_id: str, _admin=Depends(current_admin)):
     return ai_management_service.select_model(model_id)
 
 
+
+@router.patch("/models/{model_id:path}/candidate")
+def update_model_candidate(model_id: str, payload: ModelCandidateUpdateRequest, _admin=Depends(current_admin)):
+    return ai_management_service.set_model_candidate(model_id, payload.candidate)
 @router.get("/artifacts/{artifact:path}")
 def artifact(artifact: str, _admin=Depends(current_admin)):
     content, content_type = ai_management_service.get_artifact(artifact)

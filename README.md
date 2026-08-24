@@ -222,6 +222,8 @@ context, and board draft behavior.
 
 Apply `sql/ai_model_catalog.sql` to an existing MySQL database. New databases receive the same tables from `sql/schema.sql`.
 
+For a database where the AI catalog tables already exist, apply incremental changes with `sql/ai_model_candidate.sql`; it adds `is_candidate` using `ALTER TABLE` and preserves all model rows.
+
 - `ai_models` stores experiment configuration, aggregate metrics, artifacts, weights, and selected state.
 - `ai_model_class_metrics` stores validation or operational-review accuracy per detection class. Accuracy is `TP / (TP + FP + FN)`.
 - `ai_gpu_devices` stores the latest state per host and GPU index; repeated 5-second polling updates the same row instead of creating an unbounded history.
