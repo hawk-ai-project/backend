@@ -245,12 +245,18 @@ def find_reinspection_detections(run_id: int | None) -> list[dict[str, Any]]:
     if not run_id:
         return []
     rows = fetch_query(
-        """SELECT d.id, COALESCE(awt.name_ko, wt.name_ko) AS className,
+        """SELECT d.id, wt.name_ko AS originalClassName,
+        COALESCE(awt.name_ko, wt.name_ko) AS className,
         d.confidence, d.bbox_x AS bboxX, d.bbox_y AS bboxY,
-        d.bbox_width AS bboxWidth, d.bbox_height AS bboxHeight
+        d.bbox_width AS bboxWidth, d.bbox_height AS bboxHeight,
+        d.review_result AS reviewResult, d.review_status AS reviewStatus,
+        d.reviewed_at AS reviewedAt,
+        (d.reviewed_at IS NOT NULL OR d.actual_waste_type_id IS NOT NULL
+         OR d.review_status <> 'UNLABELED') AS modified,
+        (d.review_result = 'FALSE_NEGATIVE' AND d.confidence = 0) AS manuallyAdded
         FROM detections d JOIN waste_types wt ON wt.id=d.waste_type_id
         LEFT JOIN waste_types awt ON awt.id=d.actual_waste_type_id
-        WHERE d.detection_run_id=%s ORDER BY d.id""", (run_id,),
+        WHERE d.detection_run_id=%s ORDER BY d.id""", (run_id),
     )
     return rows if isinstance(rows, list) else []
 
@@ -261,10 +267,18 @@ def find_reinspection_detail(inspection_id: int, user_id: int, is_admin: bool) -
     row = fetch_query(
         f"""SELECT i.id AS inspectionId, i.title, l.name AS location,
         i.captured_at AS capturedAt, i.status, r.id AS runId,
-        r.model_name AS modelName, r.model_version AS modelVersion
+        r.model_name AS modelName, r.model_version AS modelVersion,
+        am.external_id AS modelExternalId, am.name AS modelDisplayName,
+        am.base_model AS modelBaseName, am.optimizer AS modelOptimizer,
+        am.epochs AS modelEpochs, am.image_size AS modelImageSize,
+        am.precision_score AS modelPrecision, am.recall_score AS modelRecall,
+        am.map50 AS modelMap50, am.map50_95 AS modelMap50_95
         FROM inspections i LEFT JOIN locations l ON l.id=i.location_id
         LEFT JOIN detection_runs r ON r.id=(SELECT rr.id FROM detection_runs rr
           WHERE rr.inspection_id=i.id AND rr.status='SUCCEEDED' ORDER BY rr.id DESC LIMIT 1)
+        LEFT JOIN ai_models am ON am.id=(SELECT model.id FROM ai_models model
+          WHERE model.name=r.model_name OR model.external_id=r.model_name OR model.name=r.model_version
+          ORDER BY model.is_selected DESC, model.id DESC LIMIT 1)
         WHERE i.id=%s AND i.deleted_at IS NULL AND i.status='DRAFT' {permission}""", params, one=True,
     )
     if not isinstance(row, dict):
