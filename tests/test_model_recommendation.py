@@ -1,5 +1,6 @@
 from unittest.mock import patch
 from decimal import Decimal
+from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
@@ -156,6 +157,33 @@ def test_global_context_is_forwarded_as_dict_without_chat():
     assert captured["gpu"] == [{"name": "GPU"}]
     assert captured["inspection"] is None and captured["reinspection"] is None
     chat.assert_not_called()
+
+
+def test_service_serializes_decimal_metrics_before_http_request():
+    decimal_models = [{
+        **MODELS[0],
+        "precision": Decimal("0.9123"),
+        "recall": Decimal("0.8765"),
+        "map50": Decimal("0.9501"),
+        "map50_95": Decimal("0.7012"),
+    }]
+    captured = {}
+
+    def post(endpoint, request_payload, *, transport=None):
+        captured["endpoint"] = endpoint
+        captured["payload"] = request_payload
+        return ai_result("train/s")
+
+    with mock_context(models=decimal_models), patch.object(service.ai_client, "_post_json", side_effect=post):
+        result = service.recommend(payload(), ADMIN)
+
+    assert captured["endpoint"] == "/api/ai/model-recommendations"
+    candidate = captured["payload"]["candidateModels"][0]
+    assert candidate["precision"] == pytest.approx(0.9123)
+    assert candidate["recall"] == pytest.approx(0.8765)
+    assert candidate["map50"] == pytest.approx(0.9501)
+    assert candidate["map50_95"] == pytest.approx(0.7012)
+    assert result["recommendedModelId"] == "train/s"
 
 
 def test_decimal_metrics_are_json_serializable_before_ai_request():

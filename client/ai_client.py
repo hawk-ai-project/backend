@@ -12,6 +12,7 @@ from typing import Any
 from uuid import uuid4
 
 import httpx
+from fastapi.encoders import jsonable_encoder
 
 from config import settings
 
@@ -186,7 +187,7 @@ def generate_model_recommendations(
 ) -> dict[str, Any]:
     data = _post_json(
         "/api/ai/model-recommendations",
-        context,
+        jsonable_encoder(context),
         transport=transport,
     )
     if not isinstance(data.get("recommendations"), list):

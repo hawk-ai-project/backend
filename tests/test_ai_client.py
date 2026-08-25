@@ -1,7 +1,11 @@
 import json
+from datetime import date, datetime, timezone
+from decimal import Decimal
+from enum import Enum
 
 import httpx
 import pytest
+from pydantic import BaseModel
 
 from client import ai_client
 
@@ -91,6 +95,54 @@ def test_model_recommendations_request_contract(context_type, inspection, reinsp
     result = ai_client.generate_model_recommendations(context, transport=httpx.MockTransport(handler))
     assert captured == {"path": "/api/ai/model-recommendations", "body": context}
     assert result == {"recommendations": [], "warnings": []}
+
+
+def test_model_recommendations_serializes_database_native_context_values():
+    class ReviewStatus(str, Enum):
+        REVIEWED = "REVIEWED"
+
+    class ContextMetadata(BaseModel):
+        source: str
+
+    context = {
+        "contextType": "GLOBAL",
+        "candidateModels": [{
+            "modelId": "model-a",
+            "precision": Decimal("0.9123"),
+            "recall": Decimal("0.8765"),
+            "map50": Decimal("0.9501"),
+            "map50_95": Decimal("0.7012"),
+        }],
+        "gpu": [],
+        "inspection": {
+            "createdAt": datetime(2026, 8, 25, 12, 30, tzinfo=timezone.utc),
+            "inspectionDate": date(2026, 8, 25),
+            "reviewStatus": ReviewStatus.REVIEWED,
+            "metadata": ContextMetadata(source="database"),
+        },
+        "reinspection": None,
+    }
+    captured = {}
+
+    def handler(request):
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"recommendations": [], "warnings": []}, request=request)
+
+    ai_client.generate_model_recommendations(context, transport=httpx.MockTransport(handler))
+
+    assert captured["path"] == "/api/ai/model-recommendations"
+    candidate = captured["body"]["candidateModels"][0]
+    assert candidate["precision"] == pytest.approx(0.9123)
+    assert candidate["recall"] == pytest.approx(0.8765)
+    assert candidate["map50"] == pytest.approx(0.9501)
+    assert candidate["map50_95"] == pytest.approx(0.7012)
+    assert captured["body"]["inspection"] == {
+        "createdAt": "2026-08-25T12:30:00+00:00",
+        "inspectionDate": "2026-08-25",
+        "reviewStatus": "REVIEWED",
+        "metadata": {"source": "database"},
+    }
 
 
 @pytest.mark.parametrize("payload", [{}, {"recommendations": "invalid"}, {"recommendations": [], "warnings": "invalid"}])
