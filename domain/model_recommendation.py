@@ -22,6 +22,18 @@ class ModelRecommendationRequest(BaseModel):
         return self
 
 
+class RankedModelRecommendation(BaseModel):
+    rank: int = Field(ge=1, le=3)
+    modelId: str
+    modelName: str
+    label: str
+    summary: str
+    strengths: list[str]
+    bestFor: list[str]
+    tradeoffs: list[str]
+    reasons: list[str] = Field(default_factory=list)
+
+
 class ModelRecommendationResponse(BaseModel):
     contextType: RecommendationContextType
     recommendedModelId: str
@@ -32,3 +44,4 @@ class ModelRecommendationResponse(BaseModel):
     reasons: list[str]
     warnings: list[str]
     candidateCount: int = Field(ge=1)
+    recommendations: list[RankedModelRecommendation] = Field(min_length=1, max_length=3)

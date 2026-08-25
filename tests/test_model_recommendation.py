@@ -15,6 +15,7 @@ MODELS = [
     {"modelId": "train/s", "name": "YOLO-S", "map50_95": .60, "recall": .70, "precision": .80, "map50": .90, "classMetrics": []},
     {"modelId": "train/m", "name": "YOLO-M", "map50_95": .75, "recall": .85, "precision": .82, "map50": .92, "classMetrics": []},
 ]
+THREE_MODELS = [*MODELS, {"modelId": "train/l", "name": "YOLO-L", "map50_95": .70, "recall": .75, "precision": .90, "map50": .91, "classMetrics": []}]
 ADMIN = {"id": 1, "role": "ADMIN"}
 USER = {"id": 2, "role": "USER"}
 
@@ -33,10 +34,16 @@ def mock_context(inspection=None, models=MODELS, reinspection=None):
     )
 
 
-def ai_result(model_id="train/m"):
+def ai_result(*model_ids):
+    model_ids = model_ids or ("train/m", "train/s")
     return {"answer": json.dumps({
-        "recommendedModelId": model_id, "confidence": .87, "summary": "best",
-        "reasons": ["higher recall"], "warnings": [],
+        "recommendations": [{
+            "rank": rank, "modelId": model_id, "modelName": "untrusted",
+            "label": f"choice {rank}", "summary": f"summary {rank}",
+            "strengths": ["metric strength"], "bestFor": ["operation"],
+            "tradeoffs": [], "reasons": ["higher metric"],
+        } for rank, model_id in enumerate(model_ids, 1)],
+        "confidence": .87, "warnings": [],
     })}
 
 
@@ -155,10 +162,93 @@ def test_reinspection_fallback_prioritizes_problem_class_recall():
     models = [
         {**MODELS[1], "classMetrics": [{"className": "bottle", "recall": .40, "precision": .95}]},
         {**MODELS[0], "classMetrics": [{"className": "bottle", "recall": .90, "precision": .70}]},
+        {**THREE_MODELS[2], "classMetrics": [{"className": "bottle", "recall": .70, "precision": .85}]},
     ]
     reinspection = {"currentModelId": "train/s", "detections": [{}], "reviewSummary": {
         "falseNegative": 2, "falsePositive": 0, "falseNegativeClasses": ["bottle"], "falsePositiveClasses": [],
     }}
     with mock_context(models=models, reinspection=reinspection), patch.object(service.ai_client, "generate_chat", return_value={"answer": "bad json"}):
         result = service.recommend(payload("REINSPECTION", 3), USER)
-    assert result["recommendedModelId"] == "train/s"
+    assert [item["modelId"] for item in result["recommendations"]] == ["train/s", "train/l", "train/m"]
+
+
+@pytest.mark.parametrize("models,ids", [
+    (THREE_MODELS, ("train/m", "train/l", "train/s")),
+    (MODELS, ("train/m", "train/s")),
+    ([MODELS[0]], ("train/s",)),
+])
+def test_llm_returns_expected_recommendation_count_and_ranks(models, ids):
+    with mock_context(models=models), patch.object(service.ai_client, "generate_chat", return_value=ai_result(*ids)):
+        result = service.recommend(payload(), ADMIN)
+    assert len(result["recommendations"]) == min(len(models), 3)
+    assert [item["rank"] for item in result["recommendations"]] == list(range(1, len(ids) + 1))
+
+
+def test_model_names_are_resolved_from_candidates_and_top_level_is_compatible():
+    with mock_context(), patch.object(service.ai_client, "generate_chat", return_value=ai_result("train/m", "train/s")):
+        result = service.recommend(payload(), ADMIN)
+    assert result["recommendations"][0]["modelName"] == "YOLO-M"
+    assert result["recommendedModelId"] == result["recommendations"][0]["modelId"]
+    assert result["recommendedModelName"] == result["recommendations"][0]["modelName"]
+    assert {"confidence", "summary", "reasons", "warnings", "candidateCount"} <= result.keys()
+
+
+@pytest.mark.parametrize("items", [
+    [
+        {"rank": 1, "modelId": "train/m", "label": "one", "summary": "one", "strengths": [], "bestFor": [], "tradeoffs": []},
+        {"rank": 2, "modelId": "train/m", "label": "two", "summary": "two", "strengths": [], "bestFor": [], "tradeoffs": []},
+    ],
+    [
+        {"rank": 1, "modelId": "outside", "label": "one", "summary": "one", "strengths": [], "bestFor": [], "tradeoffs": []},
+        {"rank": 2, "modelId": "train/s", "label": "two", "summary": "two", "strengths": [], "bestFor": [], "tradeoffs": []},
+    ],
+    [
+        {"rank": rank, "modelId": model_id, "label": "choice", "summary": "summary", "strengths": [], "bestFor": [], "tradeoffs": []}
+        for rank, model_id in enumerate(("train/s", "train/m", "train/l", "train/x"), 1)
+    ],
+    [
+        {"rank": 2, "modelId": "train/m", "label": "bad rank", "summary": "summary", "strengths": [], "bestFor": [], "tradeoffs": []},
+        {"rank": 1, "modelId": "train/s", "label": "bad rank", "summary": "summary", "strengths": [], "bestFor": [], "tradeoffs": []},
+    ],
+    [
+        {"rank": 1, "modelId": "train/m", "label": "bad list", "summary": "summary", "strengths": "not-list", "bestFor": [], "tradeoffs": []},
+        {"rank": 2, "modelId": "train/s", "label": "two", "summary": "summary", "strengths": [], "bestFor": [], "tradeoffs": []},
+    ],
+])
+def test_invalid_ranked_llm_response_uses_full_fallback(items):
+    generated = {"answer": json.dumps({"recommendations": items, "warnings": []})}
+    with mock_context(), patch.object(service.ai_client, "generate_chat", return_value=generated):
+        result = service.recommend(payload(), ADMIN)
+    assert [item["modelId"] for item in result["recommendations"]] == ["train/m", "train/s"]
+    assert "fallback" in result["warnings"][-1]
+
+
+@pytest.mark.parametrize("context_type", ["GLOBAL", "INSPECTION"])
+def test_global_and_inspection_fallback_return_top_three(context_type):
+    inspection = {"inspectionId": 3, "currentModelId": "train/s", "detections": []}
+    request = payload() if context_type == "GLOBAL" else payload("INSPECTION", 3)
+    user = ADMIN if context_type == "GLOBAL" else USER
+    with mock_context(inspection, THREE_MODELS), patch.object(service.ai_client, "generate_chat", return_value={"answer": "bad"}):
+        result = service.recommend(request, user)
+    assert [item["modelId"] for item in result["recommendations"]] == ["train/m", "train/l", "train/s"]
+
+
+def test_reinspection_fp_fallback_prioritizes_problem_class_precision():
+    models = [
+        {**MODELS[0], "classMetrics": [{"className": "foam", "recall": .95, "precision": .60}]},
+        {**MODELS[1], "classMetrics": [{"className": "foam", "recall": .70, "precision": .92}]},
+        {**THREE_MODELS[2], "classMetrics": [{"className": "foam", "recall": .80, "precision": .82}]},
+    ]
+    reinspection = {"detections": [{}], "reviewSummary": {
+        "falseNegative": 0, "falsePositive": 2, "falseNegativeClasses": [], "falsePositiveClasses": ["foam"],
+    }}
+    with mock_context(models=models, reinspection=reinspection), patch.object(service.ai_client, "generate_chat", return_value={"answer": "bad"}):
+        result = service.recommend(payload("REINSPECTION", 3), USER)
+    assert [item["modelId"] for item in result["recommendations"]] == ["train/m", "train/l", "train/s"]
+
+
+def test_ranked_recommendation_does_not_select_model():
+    with mock_context(), patch.object(service.ai_client, "generate_chat", return_value=ai_result()), \
+            patch.object(service.ai_client, "select_ai_model") as select:
+        service.recommend(payload(), ADMIN)
+    select.assert_not_called()
