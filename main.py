@@ -18,6 +18,7 @@ from controller import (
     hokeytoon_controller,
     inspection_controller,
     menu_controller,
+    model_recommendation_controller,
     question_controller,
     waste_controller,
     waste_type_controller,
@@ -101,6 +102,7 @@ app.include_router(history_controller.router)
 app.include_router(hokeytoon_controller.router)
 app.include_router(inspection_controller.router)
 app.include_router(menu_controller.router)
+app.include_router(model_recommendation_controller.router)
 app.include_router(question_controller.router)
 app.include_router(waste_controller.router)
 app.include_router(waste_type_controller.router)
