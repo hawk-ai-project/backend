@@ -104,13 +104,6 @@ async def complete_inspection_history(
     return await history_service.complete_history(inspection_id, afterImage, auth[0])
 
 
-@router.post("/histories/{inspection_id}/analyze")
-def analyze_inspection_image(
-    inspection_id: int,
-    auth=Depends(current_auth),
-):
-    return history_service.analyze_image(inspection_id, auth[0])
-
 @router.get("/waste-types", response_model=list[str])
 def get_waste_types():
     return chat_repository.find_waste_names()

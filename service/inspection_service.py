@@ -1,12 +1,106 @@
 # backend/service/inspection_service.py
 
+import base64
+import binascii
 import json
+import math
+from io import BytesIO
 
 from fastapi import HTTPException, status
+from PIL import Image, ImageDraw
 from client import ai_client
 from domain.inspection import InspectionCreateRequest, InspectionRequest, InspectionResponse, InspectionSaveRequest
 from repository import inspection_repository, model_catalog_repository
 from service import ai_error_service, file_service, geocoding_service
+
+
+def _annotated_image_data(analysis: dict) -> str | None:
+    """Return the AI annotation image in the data-URL format used by storage.
+
+    The deployed AI service has used both the API's camelCase field and the
+    Python-style snake_case field.  Accepting both prevents a successful
+    detection response from silently losing its rendered result image.
+    """
+    for key in ("annotatedImage", "annotated_image"):
+        value = analysis.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _normalize_analysis(analysis: dict) -> dict:
+    """Adapt the AI server's detection payload to the API's persisted format."""
+    normalized = dict(analysis)
+    image_info = analysis.get("image")
+    image_width = image_info.get("width") if isinstance(image_info, dict) else None
+    image_height = image_info.get("height") if isinstance(image_info, dict) else None
+    detections = []
+
+    for item in analysis.get("detections") or []:
+        if not isinstance(item, dict):
+            continue
+        bbox = item.get("bbox")
+        if not isinstance(bbox, list) or len(bbox) != 4:
+            continue
+        try:
+            values = [float(value) for value in bbox]
+        except (TypeError, ValueError):
+            continue
+        if not all(math.isfinite(value) for value in values):
+            continue
+
+        # The deployed detector returns pixel-space [x1, y1, x2, y2].
+        # Stored detections use normalized [x, y, width, height].
+        if image_width and image_height and max(values) > 1:
+            x1, y1, x2, y2 = values
+            values = [x1 / image_width, y1 / image_height,
+                      (x2 - x1) / image_width, (y2 - y1) / image_height]
+        x, y, width, height = values
+        x, y = max(0.0, x), max(0.0, y)
+        width, height = min(width, 1.0 - x), min(height, 1.0 - y)
+        if width <= 0 or height <= 0:
+            continue
+        detections.append({
+            "className": str(item.get("className") or item.get("class_name") or "UNKNOWN"),
+            "confidence": float(item.get("confidence") or 0),
+            "bbox": [x, y, width, height],
+        })
+    normalized["detections"] = detections
+    return normalized
+
+
+def _render_annotated_image(source_data_url: str, detections: list[dict]) -> str:
+    """Create an annotation image when the detector returns boxes but no bitmap."""
+    encoded = source_data_url.split(",", 1)[-1]
+    try:
+        image_bytes = base64.b64decode(encoded, validate=True)
+        with Image.open(BytesIO(image_bytes)) as source:
+            canvas = source.convert("RGB")
+    except (ValueError, binascii.Error, OSError) as error:
+        raise HTTPException(status_code=422, detail="Original inspection image could not be rendered.") from error
+
+    draw = ImageDraw.Draw(canvas)
+    width, height = canvas.size
+    for detection in detections:
+        x, y, box_width, box_height = detection["bbox"]
+        left, top = round(x * width), round(y * height)
+        right, bottom = round((x + box_width) * width), round((y + box_height) * height)
+        label = f"{detection['className']} {detection['confidence']:.0%}"
+        draw.rectangle((left, top, right, bottom), outline="#ef4444", width=max(2, width // 300))
+        draw.text((left + 4, max(0, top - 18)), label, fill="#ef4444")
+
+    output = BytesIO()
+    canvas.save(output, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode("ascii")
+
+
+def _prepare_analysis(analysis: dict, source_data_url: str) -> dict:
+    normalized = _normalize_analysis(analysis)
+    if not _annotated_image_data(normalized):
+        normalized["annotatedImage"] = _render_annotated_image(
+            source_data_url, normalized["detections"]
+        )
+    return normalized
 
 def analyze_image(payload: InspectionRequest) -> InspectionResponse:
     try:
@@ -71,8 +165,11 @@ def _create_inspection_with_image(
         analysis = {"detections": []}
         analysis_unavailable = True
 
+    if not analysis_unavailable:
+        analysis = _prepare_analysis(analysis, payload.image)
+
     original = file_service.store_inspection_data_image(payload.image, user["id"], "ORIGINAL")
-    annotated_data = analysis.get("annotatedImage")
+    annotated_data = _annotated_image_data(analysis)
     annotated = None
     if isinstance(annotated_data, str) and annotated_data:
         annotated = file_service.store_inspection_data_image(annotated_data, user["id"], "ANNOTATED")
@@ -171,6 +268,61 @@ def save_inspection(payload: InspectionSaveRequest, user: dict) -> dict:
         longitude=longitude,
     )
     return _create_inspection_with_image(request, user, status="DRAFT")
+
+
+def reanalyze_inspection(inspection_id: int, user: dict) -> dict:
+    """Run AI again from the stored original and persist a new ANNOTATED image."""
+    inspection = inspection_repository.find_accessible_inspection(
+        inspection_id, user["id"], user.get("role") == "ADMIN"
+    )
+    if not inspection:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inspection history not found.")
+
+    stored_file, content_type = file_service.open_inspection_image(
+        inspection_id, user, "ORIGINAL"
+    )
+    try:
+        image_bytes = stored_file.read()
+    finally:
+        stored_file.close()
+        stored_file.release_conn()
+
+    if not image_bytes:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original inspection image not found.")
+
+    image_data_url = (
+        f"data:{content_type};base64,"
+        f"{base64.b64encode(image_bytes).decode('ascii')}"
+    )
+    try:
+        analysis = ai_client.detect_image(image_data_url)
+    except Exception as error:
+        raise ai_error_service.to_http_exception(error) from error
+
+    analysis = _prepare_analysis(analysis, image_data_url)
+    annotated_data = _annotated_image_data(analysis)
+
+    annotated = file_service.store_inspection_data_image(
+        annotated_data, user["id"], "ANNOTATED"
+    )
+    original_image_id = inspection_repository.find_inspection_image_id(
+        inspection_id, "ORIGINAL"
+    )
+    if original_image_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original inspection image metadata not found.")
+
+    annotated_image_id = inspection_repository.create_inspection_image(
+        inspection_id, "ANNOTATED", annotated
+    )
+    inspection_repository.save_detection_result(
+        inspection_id, original_image_id, annotated_image_id, analysis
+    )
+    return {
+        "inspectionId": inspection_id,
+        "annotatedImageId": annotated_image_id,
+        "message": "Analysis image has been regenerated.",
+        "detections": analysis.get("detections") or [],
+    }
 
 
 def get_reinspection_targets(user: dict) -> list[dict]:

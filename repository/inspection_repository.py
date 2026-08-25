@@ -55,6 +55,17 @@ def create_inspection_image(inspection_id: int, kind: str, stored: dict[str, Any
     )
 
 
+def find_inspection_image_id(inspection_id: int, kind: str) -> int | None:
+    row = fetch_query(
+        """SELECT id FROM inspection_images
+        WHERE inspection_id = %s AND kind = %s
+        ORDER BY id DESC LIMIT 1""",
+        (inspection_id, kind),
+        one=True,
+    )
+    return int(row["id"]) if isinstance(row, dict) and row.get("id") is not None else None
+
+
 def save_detection_result(
     inspection_id: int,
     source_image_id: int,
