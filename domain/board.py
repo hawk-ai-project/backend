@@ -22,7 +22,7 @@ class Board(BaseModel):
     tags: list[str]
     author: BoardAuthor
     createdAt: datetime
-    updatedAt: datetime
+    updatedAt: datetime | None
     viewCount: int
     thumbnailUrl: str | None
 
