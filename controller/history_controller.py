@@ -23,9 +23,22 @@ class InspectionNotesRequest(BaseModel):
 @router.get("/histories", response_model=list[InspectionHistoryItem])
 def get_recent_inspection_history(
     limit: int = Query(default=100, ge=1, le=1000),
+    keyword: str | None = Query(default=None),
+    location: str | None = Query(default=None),
+    waste: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    date: str | None = Query(default=None),
     auth=Depends(current_auth),
 ):
-    return history_service.get_recent_history(auth[0], limit)
+    return history_service.get_recent_history(
+        user=auth[0],
+        limit=limit,
+        keyword=keyword,
+        location=location,
+        waste=waste,
+        status=status,
+        date=date,
+    )
 
 
 @router.get("/assignees", response_model=list[InspectionAssignee])
@@ -66,7 +79,6 @@ async def upload_proof_image(
     file: UploadFile = File(...),
     auth=Depends(current_auth),
 ):
-    """수거 완료 증빙 사진 업로드"""
     return await history_service.upload_proof_image(inspection_id, file, auth[0])
 
 
@@ -102,6 +114,14 @@ async def complete_inspection_history(
     auth=Depends(current_auth),
 ):
     return await history_service.complete_history(inspection_id, afterImage, auth[0])
+
+
+@router.post("/histories/{inspection_id}/analyze")
+def analyze_inspection_image(
+    inspection_id: int,
+    auth=Depends(current_auth),
+):
+    return history_service.analyze_image(inspection_id, auth[0])
 
 
 @router.get("/waste-types", response_model=list[str])

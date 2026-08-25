@@ -1,3 +1,4 @@
+from datetime import datetime
 import hashlib
 import io
 import json
@@ -5,44 +6,118 @@ import uuid
 from PIL import Image
 from fastapi import HTTPException, UploadFile, status
 
+# 1. chat_repository import 복구
 from repository import chat_repository, history_repository
 from service import file_service
 from service.file_service import get_client, settings
 
 
-def get_recent_history(user: dict, limit: int) -> list[dict]:
+def format_captured_at(captured_at) -> str:
+    """'YYYY. M. D. HH:mm' 포맷으로 변환"""
+    if not captured_at:
+        return "-"
+    if isinstance(captured_at, str):
+        try:
+            dt = datetime.fromisoformat(captured_at.replace("Z", "+00:00"))
+            return f"{dt.year}. {dt.month}. {dt.day}. {dt.strftime('%H:%M')}"
+        except Exception:
+            return captured_at
+    if isinstance(captured_at, datetime):
+        return f"{captured_at.year}. {captured_at.month}. {captured_at.day}. {captured_at.strftime('%H:%M')}"
+    return str(captured_at)
+
+
+def build_waste_summary(detections: list) -> str:
+    """waste_types.name_ko와 count를 합산하여 '스티로폼 상자 2개' 형태 문자열 생성"""
+    if not detections:
+        return "탐지 결과 없음"
+
+    counts = {}
+    for d in detections:
+        label = d.get("name_ko") or d.get("waste_type_name") or d.get("name") or "폐기물"
+        cnt = int(d.get("count") or 1)
+        counts[label] = counts.get(label, 0) + cnt
+
+    summary_parts = [f"{label} {count}개" for label, count in counts.items() if label]
+    return ", ".join(summary_parts) if summary_parts else "탐지 결과 없음"
+
+
+def get_recent_history(
+    user: dict,
+    limit: int = 100,
+    keyword: str | None = None,
+    location: str | None = None,
+    waste: str | None = None,
+    status: str | None = None,
+    date: str | None = None,
+) -> list[dict]:
+    clean_waste = None if waste in [None, "", "전체", "전체 폐기물"] else waste
+    clean_status = None if status in [None, "", "전체", "전체 상태"] else status
+
+    # 2. chat_repository를 이용한 기존 쿼리 호출 방식 복구
     rows = chat_repository.find_inspection_history(
         limit=limit,
         user_id=user["id"],
         is_admin=user.get("role") == "ADMIN",
     )
+
     result = []
     for row in rows:
         detections = row.get("detections") or []
         if isinstance(detections, str):
-            detections = json.loads(detections)
-            
-        result.append({
-            "id": row.get("id"),
-            "title": row.get("title") or "",
-            "location": row.get("location") or row.get("title") or "",
+            try:
+                detections = json.loads(detections)
+            except Exception:
+                detections = []
+
+        inspection_id = row.get("id")
+        image_id = row.get("imageId") or row.get("image_id")
+        raw_status = row.get("status") or "PENDING"
+        waste_summary = row.get("wasteSummary") or row.get("waste_summary") or build_waste_summary(detections)
+
+        # 3. Pydantic schema 스펙에 맞춘 필드 구조 (status는 원본 영문 코드 유지)
+        item = {
+            "id": inspection_id,
+            "title": row.get("title") or f"INSPECTION-{inspection_id}",
+            "location": row.get("location") or row.get("title") or "위치 정보 없음",
             "coordinates": row.get("coordinates"),
             "capturedAt": row.get("capturedAt") or row.get("captured_at"),
-            "status": row.get("status"),
+            "status": raw_status,  # 한글 변환 없이 원본 영문 값 전달 (Pydantic 에러 방지)
             "priority": row.get("priority"),
-            "notes": row.get("notes"),
-            "aiOpinion": row.get("aiOpinion") or row.get("ai_opinion"),
+            "notes": row.get("notes") or "",
+            "aiOpinion": row.get("aiOpinion") or row.get("ai_opinion") or "",
             "inspectorName": row.get("inspectorName") or row.get("inspector_name") or "",
-            "wasteSummary": row.get("wasteSummary") or row.get("waste_summary") or "",
+            "wasteSummary": waste_summary,
             "detections": detections,
-            "imageId": row.get("imageId") or row.get("image_id"),
+            "imageId": image_id,
             "assigneeId": row.get("assigneeId") or row.get("assignee_id"),
-            "assigneeName": row.get("assigneeName") or row.get("assignee_name"),
-        })
+            "assigneeName": row.get("assigneeName") or row.get("assignee_name") or "",
+        }
+
+        # 검색 필터링
+        if keyword:
+            kw = keyword.lower()
+            if not (kw in item["title"].lower() or kw in item["notes"].lower() or kw in item["location"].lower()):
+                continue
+
+        if location and location.lower() not in item["location"].lower():
+            continue
+
+        if clean_waste and clean_waste.lower() not in item["wasteSummary"].lower():
+            continue
+
+        if clean_status and clean_status != item["status"]:
+            continue
+
+        if date and date not in str(item["capturedAt"] or ""):
+            continue
+
+        result.append(item)
+
     return result
 
 
-def get_history_image(inspection_id: int, user: dict, kind: str | None = None):    
+def get_history_image(inspection_id: int, user: dict, kind: str | None = None):
     return file_service.open_inspection_image(inspection_id, user, kind)
 
 
@@ -72,8 +147,8 @@ def assign_history(inspection_id: int, assignee_id: int, user: dict) -> dict:
     )
     if not inspection:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="점검 이력을 찾을 수 없습니다."
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="점검 이력을 찾을 수 없습니다.",
         )
 
     assignee = history_repository.find_active_user(assignee_id)
@@ -93,8 +168,8 @@ def update_notes(inspection_id: int, notes: str, user: dict) -> dict:
     )
     if not inspection:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="점검 이력을 찾을 수 없습니다."
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="점검 이력을 찾을 수 없습니다.",
         )
 
     history_repository.update_notes(inspection_id, notes)
@@ -104,20 +179,15 @@ def update_notes(inspection_id: int, notes: str, user: dict) -> dict:
 def get_history_detail(inspection_id: int, user: dict) -> dict | None:
     is_admin = user.get("role") == "ADMIN"
     row = history_repository.find_inspection_detail(inspection_id, user["id"], is_admin)
-    
     if not row:
         return None
 
-    raw_detections = row.get("detections")
-    if isinstance(raw_detections, str):
+    detections = row.get("detections") or []
+    if isinstance(detections, str):
         try:
-            detections = json.loads(raw_detections)
-        except (json.JSONDecodeError, TypeError):
+            detections = json.loads(detections)
+        except Exception:
             detections = []
-    elif isinstance(raw_detections, list):
-        detections = raw_detections
-    else:
-        detections = []
 
     return {
         "id": row.get("id"),
@@ -139,9 +209,6 @@ def get_history_detail(inspection_id: int, user: dict) -> dict | None:
 
 
 async def upload_proof_image(inspection_id: int, file: UploadFile, user: dict) -> dict:
-    """
-    수거 완료 증빙 사진을 MinIO 버킷에 저장하고 inspection_images(kind='COLLECTION_PROOF')에 메타데이터를 저장합니다.
-    """
     inspection = history_repository.find_accessible_inspection(
         inspection_id, user["id"], user.get("role") == "ADMIN"
     )
