@@ -93,7 +93,7 @@ SELECT b.id, b.title, bc.name AS category,
        u.id AS authorId, u.name AS authorName,
        b.status, b.is_notice AS isNotice, b.view_count AS viewCount,
        b.published_at AS publishedAt, b.created_at AS createdAt,
-       b.updated_at AS updatedAt
+       COALESCE(b.updated_at, b.created_at) AS updatedAt
 FROM boards b
 JOIN board_categories bc ON bc.id = b.category_id
 JOIN users u ON u.id = b.author_id
