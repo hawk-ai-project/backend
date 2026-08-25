@@ -333,3 +333,37 @@ def test_ranked_recommendation_does_not_select_model():
             patch.object(service.ai_client, "select_ai_model") as select:
         service.recommend(payload(), ADMIN)
     select.assert_not_called()
+
+
+def test_cached_global_does_not_call_ai_server():
+    cached = {"recommendedModelId": "train/m"}
+    with (
+        patch.object(service.repository, "find_cached_recommendation", return_value=cached),
+        patch.object(service.ai_client, "generate_model_recommendations") as generate,
+    ):
+        assert service.get_cached_global(ADMIN) == cached
+    generate.assert_not_called()
+
+
+def test_cached_reinspection_checks_access_and_does_not_call_ai_server():
+    cached = {"recommendedModelId": "train/s"}
+    with (
+        patch.object(service.repository, "find_reinspection_context", return_value={"inspectionId": 3}),
+        patch.object(service.repository, "find_cached_recommendation", return_value=cached),
+        patch.object(service.ai_client, "generate_model_recommendations") as generate,
+    ):
+        assert service.get_cached_reinspection(3, USER) == cached
+    generate.assert_not_called()
+
+
+def test_periodic_refresh_generates_only_one_common_recommendation():
+    generated = {"recommendedModelId": "train/m"}
+    with (
+        patch.object(service, "recommend", return_value=generated) as recommend,
+        patch.object(service.repository, "ensure_cache_table"),
+        patch.object(service.repository, "save_cached_recommendation") as save,
+    ):
+        result = service.refresh_cached_recommendations()
+    assert result == {"refreshed": 1, "failed": 0}
+    assert recommend.call_count == 1
+    save.assert_called_once_with("GLOBAL", None, generated)

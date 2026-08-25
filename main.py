@@ -1,3 +1,5 @@
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from time import perf_counter
 from uuid import UUID, uuid4
 
@@ -25,11 +27,22 @@ from controller import (
 )
 
 from service.auth_service import AuthError
-from service import activity_service
+from service import activity_service, model_recommendation_scheduler
 
 from fastapi.responses import HTMLResponse  # 추가됨
 
-app = FastAPI(title="Hawk-AI API Server")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    stop_event = asyncio.Event()
+    task = asyncio.create_task(model_recommendation_scheduler.run(stop_event))
+    yield
+    stop_event.set()
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
+
+
+app = FastAPI(title="Hawk-AI API Server", lifespan=lifespan)
 app.add_exception_handler(AuthError, auth_controller.auth_error_response)
 
 origins = [

@@ -1,8 +1,44 @@
-"""Read-only queries used to build model recommendation contexts."""
+"""Queries used to build and persist model recommendation contexts."""
 
+import json
 from typing import Any
 
-from common.db import fetch_query
+from common.db import execute_query, fetch_query
+
+
+def ensure_cache_table() -> None:
+    execute_query("""CREATE TABLE IF NOT EXISTS ai_model_recommendation_cache (
+        context_type VARCHAR(32) NOT NULL, inspection_id BIGINT NOT NULL DEFAULT 0,
+        response_json JSON NOT NULL, generated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        PRIMARY KEY (context_type, inspection_id))""")
+
+
+def save_cached_recommendation(context_type: str, inspection_id: int | None, response: dict[str, Any]) -> None:
+    execute_query("""INSERT INTO ai_model_recommendation_cache
+        (context_type,inspection_id,response_json,generated_at) VALUES (%s,%s,%s,UTC_TIMESTAMP(6))
+        ON DUPLICATE KEY UPDATE response_json=VALUES(response_json),generated_at=VALUES(generated_at)""",
+        (context_type, inspection_id or 0, json.dumps(response, ensure_ascii=False)))
+
+
+def find_cached_recommendation(context_type: str, inspection_id: int | None = None) -> dict[str, Any] | None:
+    ensure_cache_table()
+    row = fetch_query("""SELECT response_json AS responseJson FROM ai_model_recommendation_cache
+        WHERE context_type=%s AND inspection_id=%s LIMIT 1""", (context_type, inspection_id or 0), one=True)
+    if not isinstance(row, dict):
+        return None
+    value = row.get("responseJson")
+    if isinstance(value, dict):
+        return value
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
+def find_reinspection_target_ids() -> list[int]:
+    rows = fetch_query("""SELECT id FROM inspections WHERE deleted_at IS NULL
+        AND status='DRAFT' ORDER BY id""") or []
+    return [int(row["id"]) for row in rows if row.get("id")]
 
 
 def find_candidate_models() -> list[dict[str, Any]]:

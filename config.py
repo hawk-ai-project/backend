@@ -33,6 +33,7 @@ class Settings:
     ai_server_url: str
     ai_server_connect_timeout: float
     ai_server_read_timeout: float
+    model_recommendation_refresh_seconds: int
 
 
 def get_settings() -> Settings:
@@ -42,10 +43,12 @@ def get_settings() -> Settings:
         "AI_SERVER_READ_TIMEOUT",
         os.getenv("AI_SERVER_TIMEOUT_SECONDS", "120"),
     )
+    recommendation_refresh = os.getenv("MODEL_RECOMMENDATION_REFRESH_SECONDS", "900")
     try:
         parsed_max_upload_size = int(max_upload_size) * 1024 * 1024
         parsed_ai_connect_timeout = float(ai_connect_timeout)
         parsed_ai_read_timeout = float(ai_read_timeout)
+        parsed_recommendation_refresh = int(recommendation_refresh)
     except ValueError as exc:
         raise RuntimeError("Numeric environment variables must be valid numbers") from exc
 
@@ -53,6 +56,8 @@ def get_settings() -> Settings:
         raise RuntimeError("MAX_UPLOAD_SIZE_MB must be greater than zero")
     if parsed_ai_connect_timeout <= 0 or parsed_ai_read_timeout <= 0:
         raise RuntimeError("AI server timeouts must be greater than zero")
+    if parsed_recommendation_refresh < 60:
+        raise RuntimeError("MODEL_RECOMMENDATION_REFRESH_SECONDS must be at least 60")
 
     return Settings(
         database_url=_required("DATABASE_URL"),
@@ -70,6 +75,7 @@ def get_settings() -> Settings:
         ai_server_url=_required("AI_SERVER_URL").rstrip("/"),
         ai_server_connect_timeout=parsed_ai_connect_timeout,
         ai_server_read_timeout=parsed_ai_read_timeout,
+        model_recommendation_refresh_seconds=parsed_recommendation_refresh,
     )
 
 

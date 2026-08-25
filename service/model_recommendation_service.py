@@ -183,3 +183,36 @@ def recommend(payload: ModelRecommendationRequest, user: dict) -> dict:
         }
     except (KeyError, TypeError, ValueError):
         return _fallback(payload, models, warnings, current, context)
+
+
+def get_cached_global(user: dict) -> dict:
+    if user.get("role") != "ADMIN":
+        raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다.")
+    result = repository.find_cached_recommendation(RecommendationContextType.GLOBAL.value)
+    if result is None:
+        raise HTTPException(status_code=404, detail="저장된 AI 모델 추천이 아직 없습니다.")
+    return result
+
+
+def get_cached_reinspection(inspection_id: int, user: dict) -> dict:
+    context = repository.find_reinspection_context(inspection_id, user["id"], user.get("role") == "ADMIN")
+    if context is None:
+        raise HTTPException(status_code=404, detail="검사 정보를 찾을 수 없습니다.")
+    result = repository.find_cached_recommendation(RecommendationContextType.GLOBAL.value)
+    if result is None:
+        raise HTTPException(status_code=404, detail="저장된 재점검 AI 추천이 아직 없습니다.")
+    return result
+
+
+def refresh_cached_recommendations() -> dict[str, int]:
+    repository.ensure_cache_table()
+    refreshed, failed = 0, 0
+    try:
+        request = ModelRecommendationRequest(contextType=RecommendationContextType.GLOBAL)
+        result = recommend(request, {"id": 0, "role": "ADMIN"})
+        repository.save_cached_recommendation(RecommendationContextType.GLOBAL.value, None, result)
+        refreshed += 1
+    except Exception as error:
+        failed += 1
+        print(f"[MODEL RECOMMENDATION REFRESH FAILED] context=GLOBAL: {error}")
+    return {"refreshed": refreshed, "failed": failed}
