@@ -68,6 +68,56 @@ def test_chat_rejects_missing_answer_and_message():
         ai_client.generate_chat("", "question", transport=transport_json(200, {}))
 
 
+@pytest.mark.parametrize("context_type,inspection,reinspection", [
+    ("GLOBAL", None, None),
+    ("INSPECTION", {"inspectionId": 3}, None),
+    ("REINSPECTION", None, {"inspectionId": 3, "reviewSummary": {}}),
+])
+def test_model_recommendations_request_contract(context_type, inspection, reinspection):
+    context = {
+        "contextType": context_type,
+        "candidateModels": [{"modelId": "model-a"}],
+        "gpu": [{"name": "GPU"}],
+        "inspection": inspection,
+        "reinspection": reinspection,
+    }
+    captured = {}
+
+    def handler(request):
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"recommendations": [], "warnings": []}, request=request)
+
+    result = ai_client.generate_model_recommendations(context, transport=httpx.MockTransport(handler))
+    assert captured == {"path": "/api/ai/model-recommendations", "body": context}
+    assert result == {"recommendations": [], "warnings": []}
+
+
+@pytest.mark.parametrize("payload", [{}, {"recommendations": "invalid"}, {"recommendations": [], "warnings": "invalid"}])
+def test_model_recommendations_rejects_invalid_shape(payload):
+    with pytest.raises(ai_client.AIResponseError):
+        ai_client.generate_model_recommendations({}, transport=transport_json(200, payload))
+
+
+def test_model_recommendations_rejects_malformed_json():
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=b"not-json", request=request))
+    with pytest.raises(ai_client.AIResponseError):
+        ai_client.generate_model_recommendations({}, transport=transport)
+
+
+@pytest.mark.parametrize("exception,expected", [
+    (httpx.ConnectError("failed"), ai_client.AIConnectionError),
+    (httpx.ReadTimeout("timed out"), ai_client.AITimeoutError),
+])
+def test_model_recommendations_maps_transport_errors(exception, expected):
+    def fail(request):
+        exception.request = request
+        raise exception
+
+    with pytest.raises(expected):
+        ai_client.generate_model_recommendations({}, transport=httpx.MockTransport(fail))
+
+
 def test_invalid_json_maps_to_bad_gateway_error():
     transport = httpx.MockTransport(
         lambda request: httpx.Response(200, content=b"not-json", request=request)

@@ -179,6 +179,23 @@ def generate_chat(
     }
 
 
+def generate_model_recommendations(
+    context: dict[str, Any],
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> dict[str, Any]:
+    data = _post_json(
+        "/api/ai/model-recommendations",
+        context,
+        transport=transport,
+    )
+    if not isinstance(data.get("recommendations"), list):
+        raise AIResponseError("AI 서버의 모델 추천 응답에 recommendations 배열이 없습니다.")
+    if "warnings" in data and not isinstance(data["warnings"], list):
+        raise AIResponseError("AI 서버의 모델 추천 warnings는 배열이어야 합니다.")
+    return data
+
+
 def generate_board(
     payload: dict[str, Any],
     *,

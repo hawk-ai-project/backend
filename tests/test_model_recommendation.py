@@ -1,4 +1,3 @@
-import json
 from unittest.mock import patch
 
 import pytest
@@ -36,7 +35,7 @@ def mock_context(inspection=None, models=MODELS, reinspection=None):
 
 def ai_result(*model_ids):
     model_ids = model_ids or ("train/m", "train/s")
-    return {"answer": json.dumps({
+    return {
         "recommendations": [{
             "rank": rank, "modelId": model_id, "modelName": "untrusted",
             "label": f"choice {rank}", "summary": f"summary {rank}",
@@ -44,11 +43,11 @@ def ai_result(*model_ids):
             "tradeoffs": [], "reasons": ["higher metric"],
         } for rank, model_id in enumerate(model_ids, 1)],
         "confidence": .87, "warnings": [],
-    })}
+    }
 
 
 def test_global_recommendation_success():
-    with mock_context(), patch.object(service.ai_client, "generate_chat", return_value=ai_result()):
+    with mock_context(), patch.object(service.ai_client, "generate_model_recommendations", return_value=ai_result()):
         result = service.recommend(payload(), ADMIN)
     assert result["recommendedModelId"] == "train/m"
     assert result["candidateCount"] == 2
@@ -78,7 +77,7 @@ def test_missing_inspection_is_404():
 
 def test_inspection_context_recommendation():
     inspection = {"inspectionId": 3, "currentModelId": "train/s", "detections": [{"className": "foam"}]}
-    with mock_context(inspection), patch.object(service.ai_client, "generate_chat", return_value=ai_result()):
+    with mock_context(inspection), patch.object(service.ai_client, "generate_model_recommendations", return_value=ai_result()):
         result = service.recommend(payload("INSPECTION", 3), USER)
     assert result["currentModelId"] == "train/s"
     assert result["contextType"] == "INSPECTION"
@@ -86,22 +85,22 @@ def test_inspection_context_recommendation():
 
 def test_reinspection_context_recommendation():
     reinspection = {"inspectionId": 3, "currentModelId": "train/s", "detections": [{"className": "foam"}], "reviewSummary": {}}
-    with mock_context(reinspection=reinspection), patch.object(service.ai_client, "generate_chat", return_value=ai_result()):
+    with mock_context(reinspection=reinspection), patch.object(service.ai_client, "generate_model_recommendations", return_value=ai_result()):
         result = service.recommend(payload("REINSPECTION", 3), USER)
     assert result["currentModelId"] == "train/s"
     assert result["contextType"] == "REINSPECTION"
 
 
-@pytest.mark.parametrize("answer", ["not json", json.dumps({"recommendedModelId": "invented"})])
-def test_invalid_llm_response_uses_candidate_fallback(answer):
-    with mock_context(), patch.object(service.ai_client, "generate_chat", return_value={"answer": answer}):
+@pytest.mark.parametrize("result", [{"recommendations": "not a list"}, {"recommendedModelId": "invented"}])
+def test_invalid_llm_response_uses_candidate_fallback(result):
+    with mock_context(), patch.object(service.ai_client, "generate_model_recommendations", return_value=result):
         result = service.recommend(payload(), ADMIN)
     assert result["recommendedModelId"] == "train/m"
     assert "fallback" in result["warnings"][-1]
 
 
 def test_ai_server_unavailable_maps_to_503():
-    with mock_context(), patch.object(service.ai_client, "generate_chat", side_effect=ai_client.AIConnectionError()):
+    with mock_context(), patch.object(service.ai_client, "generate_model_recommendations", side_effect=ai_client.AIConnectionError()):
         with pytest.raises(HTTPException) as error:
             service.recommend(payload(), ADMIN)
     assert error.value.status_code == 503
@@ -115,13 +114,13 @@ def test_global_requires_admin():
 
 def test_missing_data_adds_warnings():
     incomplete = [{"modelId": "train/s", "name": "S", "map50_95": None, "recall": None}]
-    with mock_context(models=incomplete), patch.object(service.ai_client, "generate_chat", return_value=ai_result("train/s")):
+    with mock_context(models=incomplete), patch.object(service.ai_client, "generate_model_recommendations", return_value=ai_result("train/s")):
         result = service.recommend(payload(), ADMIN)
     assert any("누락" in warning for warning in result["warnings"])
 
 
 def test_recommendation_does_not_select_model():
-    with mock_context(), patch.object(service.ai_client, "generate_chat", return_value=ai_result()), \
+    with mock_context(), patch.object(service.ai_client, "generate_model_recommendations", return_value=ai_result()), \
             patch.object(service.ai_client, "select_ai_model") as select:
         service.recommend(payload(), ADMIN)
     select.assert_not_called()
@@ -131,14 +130,42 @@ def test_inspection_and_reinspection_use_distinct_context_keys():
     inspection = {"inspectionId": 3, "detections": []}
     reinspection = {"inspectionId": 3, "detections": [], "reviewSummary": {}}
     captured = []
-    def generate(context, _prompt):
-        captured.append(json.loads(context))
+    def generate(context):
+        captured.append(context)
         return ai_result()
-    with mock_context(inspection, reinspection=reinspection), patch.object(service.ai_client, "generate_chat", side_effect=generate):
+    with mock_context(inspection, reinspection=reinspection), patch.object(service.ai_client, "generate_model_recommendations", side_effect=generate):
         service.recommend(payload("INSPECTION", 3), USER)
         service.recommend(payload("REINSPECTION", 3), USER)
     assert captured[0]["inspection"] == inspection and captured[0]["reinspection"] is None
     assert captured[1]["inspection"] is None and captured[1]["reinspection"] == reinspection
+
+
+def test_global_context_is_forwarded_as_dict_without_chat():
+    captured = {}
+
+    def generate(context):
+        captured.update(context)
+        return ai_result()
+
+    with mock_context(), patch.object(service.ai_client, "generate_model_recommendations", side_effect=generate), \
+            patch.object(service.ai_client, "generate_chat") as chat:
+        service.recommend(payload(), ADMIN)
+    assert captured["contextType"] == "GLOBAL"
+    assert captured["candidateModels"] == MODELS
+    assert captured["gpu"] == [{"name": "GPU"}]
+    assert captured["inspection"] is None and captured["reinspection"] is None
+    chat.assert_not_called()
+
+
+def test_invalid_ai_serving_shape_uses_fallback():
+    with mock_context(), patch.object(
+        service.ai_client,
+        "generate_model_recommendations",
+        side_effect=ai_client.AIResponseError(),
+    ):
+        result = service.recommend(payload(), ADMIN)
+    assert result["recommendedModelId"] == "train/m"
+    assert "fallback" in result["warnings"][-1]
 
 
 def test_reinspection_repository_builds_review_summary():
@@ -167,7 +194,7 @@ def test_reinspection_fallback_prioritizes_problem_class_recall():
     reinspection = {"currentModelId": "train/s", "detections": [{}], "reviewSummary": {
         "falseNegative": 2, "falsePositive": 0, "falseNegativeClasses": ["bottle"], "falsePositiveClasses": [],
     }}
-    with mock_context(models=models, reinspection=reinspection), patch.object(service.ai_client, "generate_chat", return_value={"answer": "bad json"}):
+    with mock_context(models=models, reinspection=reinspection), patch.object(service.ai_client, "generate_model_recommendations", return_value={"recommendations": []}):
         result = service.recommend(payload("REINSPECTION", 3), USER)
     assert [item["modelId"] for item in result["recommendations"]] == ["train/s", "train/l", "train/m"]
 
@@ -178,14 +205,14 @@ def test_reinspection_fallback_prioritizes_problem_class_recall():
     ([MODELS[0]], ("train/s",)),
 ])
 def test_llm_returns_expected_recommendation_count_and_ranks(models, ids):
-    with mock_context(models=models), patch.object(service.ai_client, "generate_chat", return_value=ai_result(*ids)):
+    with mock_context(models=models), patch.object(service.ai_client, "generate_model_recommendations", return_value=ai_result(*ids)):
         result = service.recommend(payload(), ADMIN)
     assert len(result["recommendations"]) == min(len(models), 3)
     assert [item["rank"] for item in result["recommendations"]] == list(range(1, len(ids) + 1))
 
 
 def test_model_names_are_resolved_from_candidates_and_top_level_is_compatible():
-    with mock_context(), patch.object(service.ai_client, "generate_chat", return_value=ai_result("train/m", "train/s")):
+    with mock_context(), patch.object(service.ai_client, "generate_model_recommendations", return_value=ai_result("train/m", "train/s")):
         result = service.recommend(payload(), ADMIN)
     assert result["recommendations"][0]["modelName"] == "YOLO-M"
     assert result["recommendedModelId"] == result["recommendations"][0]["modelId"]
@@ -216,8 +243,8 @@ def test_model_names_are_resolved_from_candidates_and_top_level_is_compatible():
     ],
 ])
 def test_invalid_ranked_llm_response_uses_full_fallback(items):
-    generated = {"answer": json.dumps({"recommendations": items, "warnings": []})}
-    with mock_context(), patch.object(service.ai_client, "generate_chat", return_value=generated):
+    generated = {"recommendations": items, "warnings": []}
+    with mock_context(), patch.object(service.ai_client, "generate_model_recommendations", return_value=generated):
         result = service.recommend(payload(), ADMIN)
     assert [item["modelId"] for item in result["recommendations"]] == ["train/m", "train/s"]
     assert "fallback" in result["warnings"][-1]
@@ -228,7 +255,7 @@ def test_global_and_inspection_fallback_return_top_three(context_type):
     inspection = {"inspectionId": 3, "currentModelId": "train/s", "detections": []}
     request = payload() if context_type == "GLOBAL" else payload("INSPECTION", 3)
     user = ADMIN if context_type == "GLOBAL" else USER
-    with mock_context(inspection, THREE_MODELS), patch.object(service.ai_client, "generate_chat", return_value={"answer": "bad"}):
+    with mock_context(inspection, THREE_MODELS), patch.object(service.ai_client, "generate_model_recommendations", return_value={"recommendations": []}):
         result = service.recommend(request, user)
     assert [item["modelId"] for item in result["recommendations"]] == ["train/m", "train/l", "train/s"]
 
@@ -242,13 +269,13 @@ def test_reinspection_fp_fallback_prioritizes_problem_class_precision():
     reinspection = {"detections": [{}], "reviewSummary": {
         "falseNegative": 0, "falsePositive": 2, "falseNegativeClasses": [], "falsePositiveClasses": ["foam"],
     }}
-    with mock_context(models=models, reinspection=reinspection), patch.object(service.ai_client, "generate_chat", return_value={"answer": "bad"}):
+    with mock_context(models=models, reinspection=reinspection), patch.object(service.ai_client, "generate_model_recommendations", return_value={"recommendations": []}):
         result = service.recommend(payload("REINSPECTION", 3), USER)
     assert [item["modelId"] for item in result["recommendations"]] == ["train/m", "train/l", "train/s"]
 
 
 def test_ranked_recommendation_does_not_select_model():
-    with mock_context(), patch.object(service.ai_client, "generate_chat", return_value=ai_result()), \
+    with mock_context(), patch.object(service.ai_client, "generate_model_recommendations", return_value=ai_result()), \
             patch.object(service.ai_client, "select_ai_model") as select:
         service.recommend(payload(), ADMIN)
     select.assert_not_called()

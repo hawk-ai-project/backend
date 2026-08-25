@@ -1,5 +1,3 @@
-import json
-import re
 from typing import Any
 
 from fastapi import HTTPException
@@ -114,17 +112,6 @@ def _fallback(
     }
 
 
-def _parse_answer(answer: str) -> dict[str, Any]:
-    text = answer.strip()
-    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
-    if fenced:
-        text = fenced.group(1)
-    value = json.loads(text)
-    if not isinstance(value, dict):
-        raise ValueError("recommendation must be an object")
-    return value
-
-
 def _text_list(value: Any) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) and item.strip() for item in value):
         raise ValueError("recommendation text fields must be string lists")
@@ -167,23 +154,13 @@ def recommend(payload: ModelRecommendationRequest, user: dict) -> dict:
         raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다.")
     context, models, warnings = _context(payload, user)
     current = (context.get("inspection") or context.get("reinspection") or {}).get("currentModelId")
-    purposes = {
-        RecommendationContextType.GLOBAL: "후보 중 전체 운영 환경 기준으로 추천하세요.",
-        RecommendationContextType.INSPECTION: "현재 이미지와 탐지 특성에 적합한 후보를 추천하세요.",
-        RecommendationContextType.REINSPECTION: "재점검에서 확인된 오탐, 미탐, class 수정을 줄이는 후보를 추천하세요.",
-    }
-    prompt = purposes[payload.contextType] + " " + (
-        "다음 JSON context만 사용해 candidateModels 중 최대 3개를 순위화하세요. 후보가 3개 미만이면 존재하는 후보만 반환하세요. "
-        "모든 modelId는 candidateModels의 modelId와 정확히 일치해야 하며 중복할 수 없습니다. DB에 없는 모델, metric, GPU 요구량을 만들지 말고 "
-        "각 모델의 근거 있는 특징을 구분해 설명하세요. 자동 모델 변경은 수행하지 않습니다. JSON 객체만 반환하세요. "
-        "필드: recommendations(rank, modelId, label, summary, strengths, bestFor, tradeoffs, reasons), confidence(0~1, 선택), warnings(문자열 배열)."
-    )
     try:
-        generated = ai_client.generate_chat(json.dumps(context, ensure_ascii=False, default=str), prompt)
+        result = ai_client.generate_model_recommendations(context)
+    except ai_client.AIResponseError:
+        return _fallback(payload, models, warnings, current, context)
     except ai_client.AIServerError as error:
         raise ai_error_service.to_http_exception(error) from error
     try:
-        result = _parse_answer(generated["answer"])
         recommendations = _validated_recommendations(result, models)
         chosen = recommendations[0]
         confidence = float(result.get("confidence", 0.5))
@@ -203,5 +180,5 @@ def recommend(payload: ModelRecommendationRequest, user: dict) -> dict:
             "candidateCount": len(models),
             "recommendations": recommendations,
         }
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+    except (KeyError, TypeError, ValueError):
         return _fallback(payload, models, warnings, current, context)
