@@ -152,13 +152,36 @@ def find_inspection_detail(inspection_id: int, user_id: int, is_admin: bool) -> 
             i.priority,
             i.notes,
             i.ai_opinion,
-            NULL AS waste_summary,
-            NULL AS detections,
-            NULL AS image_id,
+            COALESCE(waste_summary.summary, '탐지 결과 없음') AS waste_summary,
+            COALESCE(waste_summary.detections, JSON_ARRAY()) AS detections,
+            (SELECT image.id
+             FROM inspection_images image
+             WHERE image.inspection_id = i.id
+             ORDER BY image.kind = 'ANNOTATED' DESC, image.id DESC
+             LIMIT 1) AS image_id,
             u.name AS inspector_name
         FROM inspections i
         LEFT JOIN users u ON u.id = i.inspector_id
         LEFT JOIN locations l ON l.id = i.location_id
+        LEFT JOIN (
+            SELECT counted.inspection_id,
+                   GROUP_CONCAT(
+                       CONCAT(wt.name_ko, ' ', counted.detected_count, '개')
+                       ORDER BY wt.name_ko SEPARATOR ', '
+                   ) AS summary,
+                   JSON_ARRAYAGG(
+                       JSON_OBJECT('className', wt.name_ko, 'count', counted.detected_count)
+                   ) AS detections
+            FROM (
+                SELECT dr.inspection_id, d.waste_type_id, COUNT(*) AS detected_count
+                FROM detection_runs dr
+                JOIN detections d ON d.detection_run_id = dr.id
+                WHERE dr.status = 'SUCCEEDED'
+                GROUP BY dr.inspection_id, d.waste_type_id
+            ) counted
+            JOIN waste_types wt ON wt.id = counted.waste_type_id
+            GROUP BY counted.inspection_id
+        ) waste_summary ON waste_summary.inspection_id = i.id
         WHERE i.id = %s
           AND i.deleted_at IS NULL
           {permission}
