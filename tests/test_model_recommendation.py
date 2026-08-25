@@ -1,4 +1,5 @@
 from unittest.mock import patch
+from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
@@ -155,6 +156,31 @@ def test_global_context_is_forwarded_as_dict_without_chat():
     assert captured["gpu"] == [{"name": "GPU"}]
     assert captured["inspection"] is None and captured["reinspection"] is None
     chat.assert_not_called()
+
+
+def test_decimal_metrics_are_json_serializable_before_ai_request():
+    decimal_models = [{
+        **MODELS[0],
+        "precision": Decimal("0.80"),
+        "recall": Decimal("0.70"),
+        "map50": Decimal("0.90"),
+        "map50_95": Decimal("0.60"),
+    }]
+    captured = {}
+
+    def generate(context):
+        captured.update(context)
+        return ai_result("train/s")
+
+    with mock_context(models=decimal_models), patch.object(
+        service.ai_client,
+        "generate_model_recommendations",
+        side_effect=generate,
+    ):
+        service.recommend(payload(), ADMIN)
+
+    assert captured["candidateModels"][0]["precision"] == .8
+    assert captured["candidateModels"][0]["map50_95"] == .6
 
 
 def test_invalid_ai_serving_shape_uses_fallback():

@@ -1,6 +1,7 @@
 from typing import Any
 
 from fastapi import HTTPException
+from fastapi.encoders import jsonable_encoder
 
 from client import ai_client
 from domain.model_recommendation import ModelRecommendationRequest, RecommendationContextType
@@ -38,13 +39,13 @@ def _context(payload: ModelRecommendationRequest, user: dict) -> tuple[dict[str,
         if reinspection is None:
             raise HTTPException(status_code=404, detail="검사 정보를 찾을 수 없습니다.")
     gpu = repository.find_gpu_status()
-    context = {
+    context = jsonable_encoder({
         "contextType": payload.contextType.value,
         "candidateModels": models,
         "gpu": gpu,
         "inspection": inspection,
         "reinspection": reinspection,
-    }
+    })
     return context, models, _warnings(models, inspection or reinspection, gpu)
 
 
