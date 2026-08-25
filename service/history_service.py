@@ -189,6 +189,12 @@ def get_history_detail(inspection_id: int, user: dict) -> dict | None:
         except Exception:
             detections = []
 
+    waste_summary = (
+        row.get("waste_summary")
+        or row.get("wasteSummary")
+        or build_waste_summary(detections)
+    )
+
     return {
         "id": row.get("id"),
         "title": row.get("title") or "",
@@ -200,7 +206,8 @@ def get_history_detail(inspection_id: int, user: dict) -> dict | None:
         "notes": row.get("notes") or "",
         "aiOpinion": row.get("ai_opinion") or row.get("aiOpinion") or "",
         "inspectorName": row.get("inspector_name") or row.get("inspectorName") or "",
-        "wasteSummary": row.get("waste_summary") or row.get("wasteSummary") or "",
+        "wasteSummary": waste_summary,
+        # "wasteSummary": row.get("waste_summary") or row.get("wasteSummary") or "",
         "detections": detections,
         "imageId": row.get("image_id") or row.get("imageId"),
         "assigneeId": row.get("assignee_id") or row.get("assigneeId"),
