@@ -11,7 +11,7 @@ from domain.history import (
     InspectionAssignmentResponse,
     InspectionHistoryItem,
 )
-from service import history_service
+from service import history_service, inspection_service
 
 router = APIRouter(prefix="/api/inspection", tags=["점검 이력"])
 
@@ -121,7 +121,7 @@ def analyze_inspection_image(
     inspection_id: int,
     auth=Depends(current_auth),
 ):
-    return history_service.analyze_image(inspection_id, auth[0])
+    return inspection_service.reanalyze_inspection(inspection_id, auth[0])
 
 
 @router.get("/waste-types", response_model=list[str])

@@ -356,6 +356,44 @@ def get_reinspection_classes() -> list[dict]:
     return inspection_repository.find_active_waste_types()
 
 
+def _require_reinspection_model_role(user: dict) -> None:
+    if user.get("role") not in {"ADMIN", "MANAGER", "INSPECTOR"}:
+        raise HTTPException(status_code=403, detail="You do not have permission to select a model.")
+
+
+def get_reinspection_models(user: dict) -> dict:
+    _require_reinspection_model_role(user)
+    try:
+        catalog = ai_client.get_ai_models()
+    except Exception as error:
+        raise ai_error_service.to_http_exception(error) from error
+    model_catalog_repository.sync_model_catalog(catalog)
+    catalog = model_catalog_repository.apply_candidate_flags(catalog)
+    catalog["models"] = sorted(
+        catalog.get("models", []),
+        key=lambda model: (
+            not bool(model.get("isCandidate")),
+            -(float(model.get("map50_95") or 0)),
+            -(float(model.get("map50") or 0)),
+        ),
+    )
+    return catalog
+
+
+def select_reinspection_model(inspection_id: int, model_id: str, user: dict) -> dict:
+    _require_reinspection_model_role(user)
+    get_reinspection_detail(inspection_id, user)
+    selected_id = model_id.strip()
+    if not selected_id:
+        raise HTTPException(status_code=422, detail="A model must be selected.")
+    try:
+        catalog = ai_client.select_ai_model(selected_id)
+    except Exception as error:
+        raise ai_error_service.to_http_exception(error) from error
+    model_catalog_repository.sync_model_catalog(catalog)
+    return {"inspectionId": inspection_id, "selectedModelId": catalog.get("selectedModelId") or selected_id}
+
+
 def save_reinspection_annotations(inspection_id: int, payload, user: dict) -> dict:
     detail = inspection_repository.find_reinspection_detail(
         inspection_id, user["id"], user.get("role") == "ADMIN"

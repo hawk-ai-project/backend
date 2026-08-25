@@ -27,6 +27,10 @@ class ReinspectionAnnotationRequest(BaseModel):
     boxes: list[ReinspectionBox] = Field(default_factory=list, max_length=500)
     deletedIds: list[int] = Field(default_factory=list, max_length=500)
 
+
+class ReinspectionModelSelectRequest(BaseModel):
+    modelId: str = Field(min_length=1, max_length=255)
+
 @router.post("", response_model=InspectionCreateResponse)
 def create_inspection(payload: InspectionCreateRequest, auth=Depends(current_auth)):
     return inspection_service.create_inspection(payload, auth[0])
@@ -43,10 +47,6 @@ def save_inspection_record(
     return inspection_service.save_inspection(payload, auth[0])
 
 # 분석 버튼 누를 시
-@router.post("/histories/{inspection_id}/analyze")
-def analyze_existing_inspection(inspection_id: int, auth=Depends(current_auth)):
-    return inspection_service.reanalyze_inspection(inspection_id, auth[0])
-
 @router.get("/reinspection-targets")
 def reinspection_targets(auth=Depends(current_auth)):
     return inspection_service.get_reinspection_targets(auth[0])
@@ -60,6 +60,16 @@ def approve_reinspection_targets(payload: ReinspectionApproveRequest, auth=Depen
 @router.get("/reinspection-targets/classes")
 def reinspection_classes(_auth=Depends(current_auth)):
     return inspection_service.get_reinspection_classes()
+
+
+@router.get("/reinspection-targets/models")
+def reinspection_models(auth=Depends(current_auth)):
+    return inspection_service.get_reinspection_models(auth[0])
+
+
+@router.post("/reinspection-targets/{inspection_id}/model/select")
+def select_reinspection_model(inspection_id: int, payload: ReinspectionModelSelectRequest, auth=Depends(current_auth)):
+    return inspection_service.select_reinspection_model(inspection_id, payload.modelId, auth[0])
 
 
 
