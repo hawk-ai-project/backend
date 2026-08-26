@@ -34,6 +34,9 @@ class LocationItem(BaseModel):
     address: Optional[str] = None
     latitude: float
     longitude: float
+    date: Optional[str] = None
+    region: Optional[str] = None
+    region_id: Optional[int] = None
     count: Optional[int] = 0
 
 
