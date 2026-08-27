@@ -311,6 +311,9 @@ def reanalyze_inspection(inspection_id: int, user: dict) -> dict:
     if original_image_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original inspection image metadata not found.")
 
+    # 기존 ANNOTATED 이미지 및 기존 탐지 결과 삭제/정리
+    inspection_repository.clear_previous_analysis(inspection_id)
+
     annotated_image_id = inspection_repository.create_inspection_image(
         inspection_id, "ANNOTATED", annotated
     )

@@ -353,3 +353,43 @@ def save_reinspection_annotations(inspection_id: int, boxes, deleted_ids: list[i
         raise
     finally:
         connection.close()
+
+
+def clear_previous_analysis(inspection_id: int) -> None:
+    """해당 점검 건에 대해 이전에 실행된 AI 분석 결과(detections, detection_runs, ANNOTATED 이미지)를 삭제합니다."""
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            # 해당 점검에 연결된 모든 detection_runs ID 조회
+            cursor.execute(
+                "SELECT id FROM detection_runs WHERE inspection_id = %s",
+                (inspection_id,)
+            )
+            run_rows = cursor.fetchall()
+            run_ids = [row[0] for row in run_rows]
+
+            if run_ids:
+                placeholders = ",".join(["%s"] * len(run_ids))
+                # detection_runs에 연결된 detections 레코드 삭제
+                cursor.execute(
+                    f"DELETE FROM detections WHERE detection_run_id IN ({placeholders})",
+                    tuple(run_ids)
+                )
+                # detection_runs 레코드 삭제
+                cursor.execute(
+                    f"DELETE FROM detection_runs WHERE id IN ({placeholders})",
+                    tuple(run_ids)
+                )
+
+            # 이전 ANNOTATED (분석 이미지) 메타데이터 삭제
+            cursor.execute(
+                "DELETE FROM inspection_images WHERE inspection_id = %s AND kind = 'ANNOTATED'",
+                (inspection_id,)
+            )
+
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
