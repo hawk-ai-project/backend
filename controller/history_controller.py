@@ -19,6 +19,8 @@ router = APIRouter(prefix="/api/inspection", tags=["점검 이력"])
 class InspectionNotesRequest(BaseModel):
     notes: str
 
+class StatusUpdateRequest(BaseModel):
+    status: str
 
 @router.get("/histories", response_model=list[InspectionHistoryItem])
 def get_recent_inspection_history(
@@ -73,12 +75,13 @@ def get_inspection_image(
     return StreamingResponse(stream(), media_type=content_type)
 
 
-@router.post("/histories/{inspection_id}/proof-image", status_code=status.HTTP_201_CREATED)
-async def upload_proof_image(
+@router.post("/histories/{inspection_id}/proof")
+async def upload_proof_image_endpoint(
     inspection_id: int,
     file: UploadFile = File(...),
     auth=Depends(current_auth),
 ):
+    """수거 완료 증빙 사진 단독 업로드"""
     return await history_service.upload_proof_image(inspection_id, file, auth[0])
 
 
@@ -127,3 +130,11 @@ def analyze_inspection_image(
 @router.get("/waste-types", response_model=list[str])
 def get_waste_types():
     return chat_repository.find_waste_names()
+
+@router.patch("/histories/{inspection_id}/status")
+async def update_inspection_status(
+    inspection_id: int,
+    payload: StatusUpdateRequest,
+    auth=Depends(current_auth),
+):
+    return await history_service.update_status_code(inspection_id, payload.status, auth[0])

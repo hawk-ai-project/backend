@@ -234,4 +234,13 @@ def insert_inspection_image(
         height,
         sha256,
     )
-    return execute_query(query, params, return_last_id=True)
+    return execute_query(query, params)
+
+def update_status(inspection_id: int, status: str) -> None:
+    query = """
+        /* update_status.sql */
+        UPDATE inspections 
+        SET status = %s, updated_at = NOW() 
+        WHERE id = %s
+    """
+    execute_query(query, (status, inspection_id))

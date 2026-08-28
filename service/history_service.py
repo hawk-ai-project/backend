@@ -215,7 +215,102 @@ def get_history_detail(inspection_id: int, user: dict) -> dict | None:
     }
 
 
-async def upload_proof_image(inspection_id: int, file: UploadFile, user: dict) -> dict:
+async def upload_proof_image(inspection_id: int, file: UploadFile, user: dict | tuple) -> dict:
+    try:
+        # 1. user 객체가 dict인지 tuple인지 안전하게 판별
+        current_user = user[0] if isinstance(user, (tuple, list)) else user
+        user_id = current_user.get("id") if isinstance(current_user, dict) else getattr(current_user, "id", None)
+        is_admin = (current_user.get("role") if isinstance(current_user, dict) else getattr(current_user, "role", "")) == "ADMIN"
+
+        # 2. 점검 이력 및 권한 검증
+        inspection = history_repository.find_accessible_inspection(
+            inspection_id, user_id, is_admin
+        )
+        if not inspection:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="점검 이력을 찾을 수 없습니다.",
+            )
+
+        # 3. 파일 바이너리 추출
+        file_bytes = await file.read()
+        if not file_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="빈 파일은 업로드할 수 없습니다.",
+            )
+
+        # 4. 해시값 및 이미지 해상도(width, height) 계산
+        sha256_hash = hashlib.sha256(file_bytes).hexdigest()
+        width, height = None, None
+        try:
+            with Image.open(io.BytesIO(file_bytes)) as img:
+                width, height = img.size
+        except Exception:
+            pass
+
+        # 5. 파일명 및 MinIO Storage Key 생성 (None 방어)
+        filename = file.filename or "proof.jpg"
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+        storage_key = f"inspections/{inspection_id}/proof_{uuid.uuid4().hex}.{ext}"
+
+        # 6. MinIO 버킷 설정명 대/소문자 안전 조회
+        bucket_name = (
+            getattr(settings, "minio_bucket", None)
+            or getattr(settings, "MINIO_BUCKET", None)
+            or getattr(settings, "minio_bucket_name", None)
+            or "inspections"
+        )
+
+        client = get_client()
+        client.put_object(
+            bucket_name=bucket_name,
+            object_name=storage_key,
+            data=io.BytesIO(file_bytes),
+            length=len(file_bytes),
+            content_type=file.content_type or "image/jpeg",
+        )
+
+        # 7. DB 메타데이터 저장
+        image_id = history_repository.insert_inspection_image(
+            inspection_id=inspection_id,
+            kind="COLLECTION_PROOF",
+            storage_key=storage_key,
+            original_name=filename,
+            mime_type=file.content_type or "image/jpeg",
+            byte_size=len(file_bytes),
+            width=width,
+            height=height,
+            sha256=sha256_hash,
+        )
+
+        return {
+            "imageId": image_id,
+            "inspectionId": inspection_id,
+            "kind": "COLLECTION_PROOF",
+            "storageKey": storage_key,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print("\n" + "=" * 50)
+        print("🚨 [upload_proof_image 내부 에러 상세 추적]")
+        traceback.print_exc()
+        print("=" * 50 + "\n")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"증빙사진 처리 중 서버 에러: {str(e)}",
+        )
+
+
+async def complete_history(
+    inspection_id: int,
+    after_image: UploadFile | None,
+    user: dict,
+) -> dict:
+    # 1. 접근 권한 및 점검 내역 존재 여부 검증
     inspection = history_repository.find_accessible_inspection(
         inspection_id, user["id"], user.get("role") == "ADMIN"
     )
@@ -225,54 +320,34 @@ async def upload_proof_image(inspection_id: int, file: UploadFile, user: dict) -
             detail="점검 이력을 찾을 수 없습니다.",
         )
 
-    file_bytes = await file.read()
-    if not file_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="빈 파일은 업로드할 수 없습니다.",
-        )
+    # 2. 증빙 사진 파일이 넘어온 경우 MinIO 업로드 및 DB 등록 (기존 upload_proof_image 활용)
+    proof_result = None
+    if after_image and after_image.filename:
+        proof_result = await upload_proof_image(inspection_id, after_image, user)
 
-    sha256_hash = hashlib.sha256(file_bytes).hexdigest()
-    width, height = None, None
-    try:
-        with Image.open(io.BytesIO(file_bytes)) as img:
-            width, height = img.size
-    except Exception:
-        pass
-
-    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
-    storage_key = f"inspections/{inspection_id}/proof_{uuid.uuid4().hex}.{ext}"
-
-    try:
-        client = get_client()
-        client.put_object(
-            bucket_name=settings.minio_bucket,
-            object_name=storage_key,
-            data=io.BytesIO(file_bytes),
-            length=len(file_bytes),
-            content_type=file.content_type or "image/jpeg",
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"MinIO 업로드 실패: {str(e)}",
-        )
-
-    image_id = history_repository.insert_inspection_image(
-        inspection_id=inspection_id,
-        kind="COLLECTION_PROOF",
-        storage_key=storage_key,
-        original_name=file.filename,
-        mime_type=file.content_type or "image/jpeg",
-        byte_size=len(file_bytes),
-        width=width,
-        height=height,
-        sha256=sha256_hash,
-    )
+    # 3. DB 상태를 'RESOLVED'(완료)로 변경
+    history_repository.update_status(inspection_id, "RESOLVED")
 
     return {
-        "imageId": image_id,
         "inspectionId": inspection_id,
-        "kind": "COLLECTION_PROOF",
-        "storageKey": storage_key,
+        "status": "RESOLVED",
+        "proof": proof_result,
     }
+
+async def update_status_code(inspection_id: int, new_status: str, user: dict) -> dict:
+    # 사용자가 이 점검 건을 수정할 권한이 있는지 확인
+    inspection = history_repository.find_accessible_inspection(
+        inspection_id, user["id"], user.get("role") == "ADMIN"
+    )
+    if not inspection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="점검 이력을 찾을 수 없습니다.",
+        )
+
+    # 앞서 추가해 둔 repository의 update_status 호출
+    # DB 업데이트 쿼리 실행 함수 호출
+    history_repository.update_status(inspection_id, new_status)
+
+    # 프론트엔드에 전달할 성공 결과 반환
+    return {"inspectionId": inspection_id, "status": new_status}
