@@ -7,7 +7,7 @@ import math
 from io import BytesIO
 
 from fastapi import HTTPException, status
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 from client import ai_client
 from domain.inspection import InspectionCreateRequest, InspectionRequest, InspectionResponse, InspectionSaveRequest
 from repository import inspection_repository, model_catalog_repository
@@ -75,7 +75,7 @@ def _render_annotated_image(source_data_url: str, detections: list[dict]) -> str
     try:
         image_bytes = base64.b64decode(encoded, validate=True)
         with Image.open(BytesIO(image_bytes)) as source:
-            canvas = source.convert("RGB")
+            canvas = ImageOps.exif_transpose(source).convert("RGB")
     except (ValueError, binascii.Error, OSError) as error:
         raise HTTPException(status_code=422, detail="Original inspection image could not be rendered.") from error
 
