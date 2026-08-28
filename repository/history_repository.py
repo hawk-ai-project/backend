@@ -48,8 +48,8 @@ def find_inspection_history(
                 COUNT(d.id) AS total_count,
                 JSON_ARRAYAGG(
                     JSON_OBJECT(
-                        'waste_type_id', COALESCE(d.actual_waste_type_id, d.waste_type_id),
-                        'name_ko', COALESCE(actual_wt.name_ko, wt.name_ko, '알 수 없음'),
+                        'waste_type_id', CASE WHEN d.review_status IN ('REVIEWED','APPROVED') THEN COALESCE(d.actual_waste_type_id, d.waste_type_id) ELSE d.waste_type_id END,
+                        'name_ko', CASE WHEN d.review_status IN ('REVIEWED','APPROVED') THEN COALESCE(actual_wt.name_ko, wt.name_ko, '알 수 없음') ELSE COALESCE(wt.name_ko, '알 수 없음') END,
                         'count', 1
                     )
                 ) AS detections_json
@@ -58,6 +58,7 @@ def find_inspection_history(
             LEFT JOIN waste_types wt ON d.waste_type_id = wt.id
             LEFT JOIN waste_types actual_wt ON d.actual_waste_type_id = actual_wt.id
             WHERE dr.status = 'SUCCEEDED'
+              AND NOT (d.review_status IN ('LABELED','REJECTED') AND d.review_result='FALSE_NEGATIVE')
               AND dr.id = (
                   SELECT latest_dr.id
                   FROM detection_runs latest_dr
@@ -127,8 +128,8 @@ def find_inspection_detail(
                 COUNT(d.id) AS total_count,
                 JSON_ARRAYAGG(
                     JSON_OBJECT(
-                        'waste_type_id', COALESCE(d.actual_waste_type_id, d.waste_type_id),
-                        'name_ko', COALESCE(actual_wt.name_ko, wt.name_ko, '알 수 없음'),
+                        'waste_type_id', CASE WHEN d.review_status IN ('REVIEWED','APPROVED') THEN COALESCE(d.actual_waste_type_id, d.waste_type_id) ELSE d.waste_type_id END,
+                        'name_ko', CASE WHEN d.review_status IN ('REVIEWED','APPROVED') THEN COALESCE(actual_wt.name_ko, wt.name_ko, '알 수 없음') ELSE COALESCE(wt.name_ko, '알 수 없음') END,
                         'count', 1
                     )
                 ) AS detections_json
@@ -137,6 +138,7 @@ def find_inspection_detail(
             LEFT JOIN waste_types wt ON d.waste_type_id = wt.id
             LEFT JOIN waste_types actual_wt ON d.actual_waste_type_id = actual_wt.id
             WHERE dr.status = 'SUCCEEDED'
+              AND NOT (d.review_status IN ('LABELED','REJECTED') AND d.review_result='FALSE_NEGATIVE')
               AND dr.id = (
                   SELECT latest_dr.id
                   FROM detection_runs latest_dr

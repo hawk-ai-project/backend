@@ -267,7 +267,7 @@ def find_reinspection_detections(run_id: int | None) -> list[dict[str, Any]]:
         (d.review_result = 'FALSE_NEGATIVE' AND d.confidence = 0) AS manuallyAdded
         FROM detections d JOIN waste_types wt ON wt.id=d.waste_type_id
         LEFT JOIN waste_types awt ON awt.id=d.actual_waste_type_id
-        WHERE d.detection_run_id=%s ORDER BY d.id""", (run_id),
+        WHERE d.detection_run_id=%s AND d.review_status <> 'REJECTED' ORDER BY d.id""", (run_id),
     )
     return rows if isinstance(rows, list) else []
 
@@ -298,6 +298,26 @@ def find_reinspection_detail(inspection_id: int, user_id: int, is_admin: bool) -
     return row
 
 
+def finalize_reinspection_annotations(inspection_ids: list[int]) -> None:
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            for inspection_id in inspection_ids:
+                cursor.execute("SELECT id FROM detection_runs WHERE inspection_id=%s AND status='SUCCEEDED' ORDER BY id DESC LIMIT 1 FOR UPDATE", (inspection_id,))
+                run = cursor.fetchone()
+                if not run:
+                    continue
+                run_id = int(run[0])
+                cursor.execute("DELETE FROM detections WHERE detection_run_id=%s AND review_status='REJECTED'", (run_id,))
+                cursor.execute("UPDATE detections SET review_status='APPROVED' WHERE detection_run_id=%s AND review_status='LABELED'", (run_id,))
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def approve_reinspection_targets(inspection_ids: list[int], user_id: int, is_admin: bool) -> int:
     placeholders = ",".join(["%s"] * len(inspection_ids))
     permission = "" if is_admin else "AND inspector_id=%s"
@@ -325,7 +345,7 @@ def save_reinspection_annotations(inspection_id: int, boxes, deleted_ids: list[i
                 raise ValueError("성공한 AI 분석 결과가 없습니다.")
             run_id = int(run[0])
             for detection_id in deleted_ids:
-                cursor.execute("DELETE FROM detections WHERE id=%s AND detection_run_id=%s", (detection_id, run_id))
+                cursor.execute("UPDATE detections SET review_status='REJECTED' WHERE id=%s AND detection_run_id=%s", (detection_id, run_id))
             for box in boxes:
                 name = box.className.strip()
                 code = name.upper().replace(" ", "_")[:50]
@@ -336,7 +356,7 @@ def save_reinspection_annotations(inspection_id: int, boxes, deleted_ids: list[i
                 if box.id is not None and box.id > 0:
                     cursor.execute("""UPDATE detections SET actual_waste_type_id=%s,
                         bbox_x=%s,bbox_y=%s,bbox_width=%s,bbox_height=%s,
-                        review_result='TRUE_POSITIVE',review_status='REVIEWED',
+                        review_result=CASE WHEN review_result='FALSE_NEGATIVE' THEN review_result ELSE 'TRUE_POSITIVE' END,review_status='LABELED',
                         reviewed_by=%s,reviewed_at=UTC_TIMESTAMP(6)
                         WHERE id=%s AND detection_run_id=%s""",
                         (waste_type_id,*values,reviewer_id,box.id,run_id))
@@ -344,7 +364,7 @@ def save_reinspection_annotations(inspection_id: int, boxes, deleted_ids: list[i
                     cursor.execute("""INSERT INTO detections
                         (detection_run_id,waste_type_id,confidence,bbox_x,bbox_y,bbox_width,bbox_height,
                          review_result,review_status,actual_waste_type_id,error_reason,retraining_candidate,reviewed_by,reviewed_at)
-                        VALUES (%s,%s,0,%s,%s,%s,%s,'FALSE_NEGATIVE','REVIEWED',%s,
+                        VALUES (%s,%s,0,%s,%s,%s,%s,'FALSE_NEGATIVE','LABELED',%s,
                                 '재점검 수동 라벨링',TRUE,%s,UTC_TIMESTAMP(6))""",
                         (run_id,waste_type_id,*values,waste_type_id,reviewer_id))
         connection.commit()

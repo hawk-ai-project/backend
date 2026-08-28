@@ -338,11 +338,23 @@ def approve_reinspection_targets(inspection_ids: list[int], user: dict) -> dict:
     unique_ids = list(dict.fromkeys(inspection_ids))
     if not unique_ids:
         raise HTTPException(status_code=422, detail="승인할 점검을 선택해주세요.")
+    pending_details = [
+        get_reinspection_detail(inspection_id, user)
+        for inspection_id in unique_ids
+    ]
+    inspection_repository.finalize_reinspection_annotations(unique_ids)
     affected = inspection_repository.approve_reinspection_targets(
         unique_ids, user["id"], user.get("role") == "ADMIN"
     )
     if affected != len(unique_ids):
-        raise HTTPException(status_code=409, detail="점검 대기 상태가 아니거나 접근할 수 없는 항목이 포함되어 있습니다.")
+        raise HTTPException(
+            status_code=409,
+            detail="점검 대기 상태가 아니거나 접근할 수 없는 항목이 포함되어 있습니다.",
+        )
+    for inspection_id, detail in zip(unique_ids, pending_details):
+        _refresh_reinspection_annotated_image(
+            inspection_id, detail.get("detections") or [], user
+        )
     return {"selectedCount": len(unique_ids), "affectedCount": affected, "status": "REVIEW_REQUIRED"}
 
 
@@ -430,12 +442,7 @@ def save_reinspection_annotations(inspection_id: int, payload, user: dict) -> di
     inspection_repository.save_reinspection_annotations(
         inspection_id, payload.boxes, payload.deletedIds, user["id"]
     )
-    updated_detail = get_reinspection_detail(inspection_id, user)
-    annotated_image_id = _refresh_reinspection_annotated_image(
-        inspection_id, updated_detail.get("detections") or [], user
-    )
-    updated_detail["annotatedImageId"] = annotated_image_id
-    return updated_detail
+    return get_reinspection_detail(inspection_id, user)
 
 def get_reinspection_model_detail(inspection_id: int, user: dict) -> dict:
     inspection = get_reinspection_detail(inspection_id, user)
