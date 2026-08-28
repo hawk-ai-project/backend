@@ -397,6 +397,26 @@ def select_reinspection_model(inspection_id: int, model_id: str, user: dict) -> 
     return {"inspectionId": inspection_id, "selectedModelId": catalog.get("selectedModelId") or selected_id}
 
 
+def _refresh_reinspection_annotated_image(inspection_id: int, detections: list[dict], user: dict) -> int:
+    stored_file, content_type = file_service.open_inspection_image(inspection_id, user, "ORIGINAL")
+    try:
+        image_bytes = stored_file.read()
+    finally:
+        stored_file.close()
+        stored_file.release_conn()
+    if not image_bytes:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original inspection image not found.")
+    source_data_url = f"data:{content_type};base64,{base64.b64encode(image_bytes).decode("ascii")}"
+    rendered_detections = [{
+        "className": detection.get("className") or "UNKNOWN",
+        "confidence": float(detection.get("confidence") or 0),
+        "bbox": [float(detection.get("bboxX") or 0), float(detection.get("bboxY") or 0), float(detection.get("bboxWidth") or 0), float(detection.get("bboxHeight") or 0)],
+    } for detection in detections]
+    annotated_data = _render_annotated_image(source_data_url, rendered_detections)
+    stored = file_service.store_inspection_data_image(annotated_data, user["id"], "ANNOTATED")
+    return inspection_repository.create_inspection_image(inspection_id, "ANNOTATED", stored)
+
+
 def save_reinspection_annotations(inspection_id: int, payload, user: dict) -> dict:
     detail = inspection_repository.find_reinspection_detail(
         inspection_id, user["id"], user.get("role") == "ADMIN"
@@ -410,7 +430,12 @@ def save_reinspection_annotations(inspection_id: int, payload, user: dict) -> di
     inspection_repository.save_reinspection_annotations(
         inspection_id, payload.boxes, payload.deletedIds, user["id"]
     )
-    return get_reinspection_detail(inspection_id, user)
+    updated_detail = get_reinspection_detail(inspection_id, user)
+    annotated_image_id = _refresh_reinspection_annotated_image(
+        inspection_id, updated_detail.get("detections") or [], user
+    )
+    updated_detail["annotatedImageId"] = annotated_image_id
+    return updated_detail
 
 def get_reinspection_model_detail(inspection_id: int, user: dict) -> dict:
     inspection = get_reinspection_detail(inspection_id, user)
