@@ -16,6 +16,9 @@ DEFAULTS = {
     "monitor_error_rate_threshold": "5",
     "monitor_failed_login_threshold": "5",
     "activity_log_retention_days": "180",
+    "ai_recommendation_schedule_mode": "DAILY",
+    "ai_recommendation_daily_time": "09:00",
+    "ai_recommendation_interval_minutes": "1440",
 }
 
 
@@ -35,7 +38,7 @@ def get_value(key: str, default: str | None = None) -> str | None:
     return row["setting_value"] if isinstance(row, dict) else default
 
 
-def save_all(values: dict[str, Any], updated_by: int) -> None:
+def save_all(values: dict[str, Any], updated_by: int | None) -> None:
     for key, value in values.items():
         execute_query(
             """INSERT INTO system_settings (setting_key, setting_value, updated_by)

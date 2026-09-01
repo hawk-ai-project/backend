@@ -3,11 +3,22 @@ from fastapi.responses import StreamingResponse
 
 from controller.admin_controller import current_admin
 from domain.admin import ModelCandidateUpdateRequest, ModelCandidatesUpdateRequest
+from domain.recommendation_schedule import RecommendationSchedule, RecommendationScheduleUpdate
 from domain.inspection import DataBulkActionRequest, DataTagCreateRequest, DetectionReviewRequest, MissedDetectionRequest
-from service import ai_management_service
+from service import ai_management_service, recommendation_schedule_service
 
 
 router = APIRouter(prefix="/api/admin/ai", tags=["AI Management"])
+
+
+@router.get("/recommendation-schedule", response_model=RecommendationSchedule)
+def recommendation_schedule(_admin=Depends(current_admin)):
+    return recommendation_schedule_service.get_schedule()
+
+
+@router.put("/recommendation-schedule", response_model=RecommendationSchedule)
+def update_recommendation_schedule(payload: RecommendationScheduleUpdate, admin=Depends(current_admin)):
+    return recommendation_schedule_service.save_schedule(payload, admin["id"])
 
 
 @router.get("/detections")
