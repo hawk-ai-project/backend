@@ -225,10 +225,42 @@ def get_climate_locations(
     season_clause = _season_month_condition(season)
     weather_clause = _weather_condition(weather_event)
 
+    # 1. location_id 정제
+    valid_loc_id = None
+    if (
+        location_id is not None
+        and str(location_id).strip()
+        and str(location_id).isdigit()
+    ):
+        valid_loc_id = int(location_id)
+
+    # 2. 지역 선택 여부에 따른 JOIN 동적 분기
+    if valid_loc_id is not None:
+        # 대구(r.id)를 골랐다면, 주소 맨 앞부분이 해당 권역명(예: 대구...)으로 시작할 때만 INNER JOIN
+        region_join_clause = """
+            JOIN regions r ON r.id = %s 
+                          AND (
+                              l.address LIKE CONCAT(r.name, '%%')
+                              OR l.address LIKE CONCAT(SUBSTRING(r.name, 1, 2), '%%')
+                          )
+        """
+        region_select_id = "r.id"
+        region_select_name = "r.name"
+    else:
+        region_join_clause = """
+            LEFT JOIN regions r ON (
+                l.address LIKE CONCAT(r.name, '%%')
+                OR l.address LIKE CONCAT(SUBSTRING(r.name, 1, 2), '%%')
+            ) AND r.is_active = TRUE
+        """
+        region_select_id = "COALESCE(r.id, 0)"
+        region_select_name = "COALESCE(r.name, '-')"
+
+    # 3. SQL 쿼리 (l.deleted_at IS NULL 제거 완료)
     sql = f"""
         SELECT 
-            r.id AS region_id,
-            r.name AS region_name,
+            {region_select_id} AS region_id,
+            {region_select_name} AS region_name,
             l.name AS location_name,
             l.address,
             l.latitude,
@@ -238,15 +270,11 @@ def get_climate_locations(
             COUNT(d.id) AS detection_count
         FROM inspections i
         JOIN locations l ON i.location_id = l.id
-        LEFT JOIN regions r ON (
-            l.address LIKE CONCAT(r.name, '%%') 
-            OR l.address LIKE CONCAT('%% ', r.name, '%%')
-        ) AND r.is_active = TRUE
+        {region_join_clause}
         LEFT JOIN detection_runs dr ON dr.inspection_id = i.id
         LEFT JOIN detections d ON d.detection_run_id = dr.id
         WHERE i.deleted_at IS NULL
           AND i.captured_at BETWEEN %s AND %s
-          AND (%s IS NULL OR r.id = %s)
           AND l.latitude IS NOT NULL 
           AND l.longitude IS NOT NULL
           AND l.latitude != 0 
@@ -254,9 +282,17 @@ def get_climate_locations(
           {season_clause}
           {weather_clause}
         GROUP BY 
-            r.id, r.name, l.id, l.name, l.address, l.latitude, l.longitude
+            region_id, region_name, l.id, l.name, l.address, l.latitude, l.longitude
+        HAVING COUNT(DISTINCT i.id) > 0 AND COUNT(d.id) > 0
+        ORDER BY detection_count DESC, count DESC
     """
-    rows = fetch_query(sql, (start_ts, end_ts, location_id, location_id)) or []
+
+    params = []
+    if valid_loc_id is not None:
+        params.append(valid_loc_id)
+    params.extend([start_ts, end_ts])
+
+    rows = fetch_query(sql, tuple(params)) or []
     return [
         {
             "id": row["region_id"] or 0,

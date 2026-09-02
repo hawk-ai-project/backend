@@ -36,6 +36,7 @@ def get_climate_dashboard(
     locations = climate_analytics_repository.get_climate_locations(
         start_date=start_date,
         end_date=end_date,
+        location_id=location_id,
         season=season,
         weather_event=weather_event,
     )
