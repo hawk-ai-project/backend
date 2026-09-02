@@ -24,12 +24,14 @@ from controller import (
     question_controller,
     waste_controller,
     waste_type_controller,
+    climate_analytics_controller,
 )
 
 from service.auth_service import AuthError
 from service import activity_service, model_recommendation_scheduler
 
 from fastapi.responses import HTMLResponse  # 추가됨
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -72,7 +74,9 @@ async def activity_monitoring(request: Request, call_next):
     """Record API activity without storing bodies, tokens, or query values."""
     supplied_request_id = request.headers.get("X-Request-ID")
     try:
-        request_id = str(UUID(supplied_request_id)) if supplied_request_id else str(uuid4())
+        request_id = (
+            str(UUID(supplied_request_id)) if supplied_request_id else str(uuid4())
+        )
     except (ValueError, TypeError):
         request_id = str(uuid4())
     request.state.request_id = request_id
@@ -101,6 +105,7 @@ async def activity_monitoring(request: Request, call_next):
                 query_keys=sorted(set(request.query_params.keys())),
             )
 
+
 # 라우터 등록
 app.include_router(admin_controller.router)
 app.include_router(ai_management_controller.router)
@@ -119,14 +124,15 @@ app.include_router(model_recommendation_controller.router)
 app.include_router(question_controller.router)
 app.include_router(waste_controller.router)
 app.include_router(waste_type_controller.router)
+app.include_router(climate_analytics_controller.router)
+
 
 # ---------------------------------------------------------
 # 서버 구동 상태 확인용 루트 엔드포인트
 # ---------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 def read_root():
-    return HTMLResponse(
-        content=r"""
+    return HTMLResponse(content=r"""
     <!DOCTYPE html>
     <html lang="ko">
     <head>
@@ -198,8 +204,8 @@ def read_root():
         </div>
     </body>
     </html>
-    """
-    )
+    """)
+
 
 # ---------------------------------------------------------
 # 기존 기본 엔드포인트 (주석 처리)
@@ -212,5 +218,3 @@ def read_root():
 # @app.get("/hello")
 # def hello():
 #     return {"message": "웰컴 또 왔네"}
-
-
