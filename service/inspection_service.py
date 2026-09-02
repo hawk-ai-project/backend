@@ -9,18 +9,22 @@ from io import BytesIO
 from fastapi import HTTPException, status
 from PIL import Image, ImageDraw, ImageOps
 from client import ai_client
-from domain.inspection import InspectionCreateRequest, InspectionRequest, InspectionResponse, InspectionSaveRequest
+from domain.inspection import (
+    InspectionCreateRequest,
+    InspectionRequest,
+    InspectionResponse,
+    InspectionSaveRequest,
+)
 from repository import inspection_repository, model_catalog_repository
 from service import ai_error_service, file_service, geocoding_service
 
+# ==============================================================================
+# 1. AI 분석 결과 데이터 가공 및 이미지 렌더링 헬퍼
+# ==============================================================================
 
+
+# 분석 결과 딕셔너리에서 Data-URL 형식의 라벨링 이미지 문자열 추출 (camelCase/snake_case 호환)
 def _annotated_image_data(analysis: dict) -> str | None:
-    """Return the AI annotation image in the data-URL format used by storage.
-
-    The deployed AI service has used both the API's camelCase field and the
-    Python-style snake_case field.  Accepting both prevents a successful
-    detection response from silently losing its rendered result image.
-    """
     for key in ("annotatedImage", "annotated_image"):
         value = analysis.get(key)
         if isinstance(value, str) and value.strip():
@@ -28,8 +32,8 @@ def _annotated_image_data(analysis: dict) -> str | None:
     return None
 
 
+# AI 서버의 픽셀 좌표[x1, y1, x2, y2]를 정규화 좌표[x, y, w, h]로 변환 및 유효성 검증
 def _normalize_analysis(analysis: dict) -> dict:
-    """Adapt the AI server's detection payload to the API's persisted format."""
     normalized = dict(analysis)
     image_info = analysis.get("image")
     image_width = image_info.get("width") if isinstance(image_info, dict) else None
@@ -49,35 +53,44 @@ def _normalize_analysis(analysis: dict) -> dict:
         if not all(math.isfinite(value) for value in values):
             continue
 
-        # The deployed detector returns pixel-space [x1, y1, x2, y2].
-        # Stored detections use normalized [x, y, width, height].
+        # 픽셀 좌표계인 경우 0~1 사이 정규화 비율 좌표로 환산
         if image_width and image_height and max(values) > 1:
             x1, y1, x2, y2 = values
-            values = [x1 / image_width, y1 / image_height,
-                      (x2 - x1) / image_width, (y2 - y1) / image_height]
+            values = [
+                x1 / image_width,
+                y1 / image_height,
+                (x2 - x1) / image_width,
+                (y2 - y1) / image_height,
+            ]
         x, y, width, height = values
         x, y = max(0.0, x), max(0.0, y)
         width, height = min(width, 1.0 - x), min(height, 1.0 - y)
         if width <= 0 or height <= 0:
             continue
-        detections.append({
-            "className": str(item.get("className") or item.get("class_name") or "UNKNOWN"),
-            "confidence": float(item.get("confidence") or 0),
-            "bbox": [x, y, width, height],
-        })
+        detections.append(
+            {
+                "className": str(
+                    item.get("className") or item.get("class_name") or "UNKNOWN"
+                ),
+                "confidence": float(item.get("confidence") or 0),
+                "bbox": [x, y, width, height],
+            }
+        )
     normalized["detections"] = detections
     return normalized
 
 
+# 원본 이미지 위에 탐지 바운딩 박스 및 라벨 텍스트를 직접 그려 Data-URL로 반환
 def _render_annotated_image(source_data_url: str, detections: list[dict]) -> str:
-    """Create an annotation image when the detector returns boxes but no bitmap."""
     encoded = source_data_url.split(",", 1)[-1]
     try:
         image_bytes = base64.b64decode(encoded, validate=True)
         with Image.open(BytesIO(image_bytes)) as source:
             canvas = ImageOps.exif_transpose(source).convert("RGB")
     except (ValueError, binascii.Error, OSError) as error:
-        raise HTTPException(status_code=422, detail="Original inspection image could not be rendered.") from error
+        raise HTTPException(
+            status_code=422, detail="Original inspection image could not be rendered."
+        ) from error
 
     draw = ImageDraw.Draw(canvas)
     width, height = canvas.size
@@ -86,14 +99,19 @@ def _render_annotated_image(source_data_url: str, detections: list[dict]) -> str
         left, top = round(x * width), round(y * height)
         right, bottom = round((x + box_width) * width), round((y + box_height) * height)
         label = f"{detection['className']} {detection['confidence']:.0%}"
-        draw.rectangle((left, top, right, bottom), outline="#ef4444", width=max(2, width // 300))
+        draw.rectangle(
+            (left, top, right, bottom), outline="#ef4444", width=max(2, width // 300)
+        )
         draw.text((left + 4, max(0, top - 18)), label, fill="#ef4444")
 
     output = BytesIO()
     canvas.save(output, format="PNG")
-    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode("ascii")
+    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode(
+        "ascii"
+    )
 
 
+# 탐지 결과 정규화 및 어노테이션 이미지 누락 시 자체 렌더링 보완
 def _prepare_analysis(analysis: dict, source_data_url: str) -> dict:
     normalized = _normalize_analysis(analysis)
     if not _annotated_image_data(normalized):
@@ -102,6 +120,26 @@ def _prepare_analysis(analysis: dict, source_data_url: str) -> dict:
         )
     return normalized
 
+
+# 문자열 형태의 좌표("위도,경도") 유효성 검증 및 파싱
+def _parse_legacy_coordinates(coordinates: str) -> tuple[float | None, float | None]:
+    try:
+        latitude, longitude = (
+            float(value.strip()) for value in coordinates.split(",", 1)
+        )
+    except (AttributeError, TypeError, ValueError):
+        return None, None
+    if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+        return None, None
+    return latitude, longitude
+
+
+# ==============================================================================
+# 2. 실시간 AI 추론 및 현장 점검 등록 서비스
+# ==============================================================================
+
+
+# AI 모델 추론 서버에 이미지 탐지 분석 요청
 def analyze_image(payload: InspectionRequest) -> InspectionResponse:
     try:
         result = ai_client.detect_image(payload.image)
@@ -115,42 +153,27 @@ def analyze_image(payload: InspectionRequest) -> InspectionResponse:
         ) from error
 
 
-def get_recent_history(user: dict, limit: int) -> list[dict]:
-    rows = inspection_repository.find_inspection_history(
-        limit=limit,
-        user_id=user["id"],
-        is_admin=user.get("role") == "ADMIN",
-    )
-    result = []
-    for row in rows:
-        detections = row.get("detections") or []
-        if isinstance(detections, str):
-            detections = json.loads(detections)
-        result.append({
-            "id": row["id"],
-            "title": row["title"],
-            "location": row["location"],
-            "address": row.get("address"),
-            "coordinates": row.get("coordinates"),
-            "capturedAt": row["capturedAt"],
-            "status": row["status"],
-            "priority": row["priority"],
-            "notes": row.get("notes"),
-            "aiOpinion": row.get("aiOpinion"),
-            "inspectorName": row["inspectorName"],
-            "wasteSummary": row["wasteSummary"],
-            "detections": detections,
-            "imageId": row.get("imageId"),
-            "assigneeId": row.get("assigneeId"),
-            "assigneeName": row.get("assigneeName"),
-        })
-    return result
-
-
+# 신규 점검 등록 엔트리포인트
 def create_inspection(payload: InspectionCreateRequest, user: dict) -> dict:
     return _create_inspection_with_image(payload, user)
 
 
+# 현장 점검 저장 (DRAFT 초안 상태로 등록)
+def save_inspection(payload: InspectionSaveRequest, user: dict) -> dict:
+    latitude, longitude = _parse_legacy_coordinates(payload.coordinates)
+    request = InspectionCreateRequest(
+        image=payload.image,
+        title=payload.title,
+        location=payload.location_name,
+        address=payload.address,
+        notes=payload.notes,
+        latitude=latitude,
+        longitude=longitude,
+    )
+    return _create_inspection_with_image(request, user, status="DRAFT")
+
+
+# 이미지 저장, 지오코딩 좌표 보정, 점검/탐지 결과 DB 일괄 저장 처리
 def _create_inspection_with_image(
     payload: InspectionCreateRequest,
     user: dict,
@@ -161,18 +184,22 @@ def _create_inspection_with_image(
     try:
         analysis = ai_client.detect_image(payload.image)
     except Exception as error:
-        # Do not discard a field inspection just because AI is temporarily down.
+        # AI 서버 일시 장애 시에도 점검 건 저장이 실패하지 않도록 빈 결과로 처리
         analysis = {"detections": []}
         analysis_unavailable = True
 
     if not analysis_unavailable:
         analysis = _prepare_analysis(analysis, payload.image)
 
-    original = file_service.store_inspection_data_image(payload.image, user["id"], "ORIGINAL")
+    original = file_service.store_inspection_data_image(
+        payload.image, user["id"], "ORIGINAL"
+    )
     annotated_data = _annotated_image_data(analysis)
     annotated = None
     if isinstance(annotated_data, str) and annotated_data:
-        annotated = file_service.store_inspection_data_image(annotated_data, user["id"], "ANNOTATED")
+        annotated = file_service.store_inspection_data_image(
+            annotated_data, user["id"], "ANNOTATED"
+        )
 
     latitude, longitude = payload.latitude, payload.longitude
     if latitude is None or longitude is None:
@@ -189,13 +216,20 @@ def _create_inspection_with_image(
         payload.notes,
         "FAILED" if analysis_unavailable else status,
     )
-    original_image_id = inspection_repository.create_inspection_image(inspection_id, "ORIGINAL", original)
+    original_image_id = inspection_repository.create_inspection_image(
+        inspection_id, "ORIGINAL", original
+    )
     annotated_image_id = None
     if annotated:
-        annotated_image_id = inspection_repository.create_inspection_image(inspection_id, "ANNOTATED", annotated)
+        annotated_image_id = inspection_repository.create_inspection_image(
+            inspection_id, "ANNOTATED", annotated
+        )
     if not analysis_unavailable:
         inspection_repository.save_detection_result(
-            inspection_id, original_image_id, annotated_image_id, analysis,
+            inspection_id,
+            original_image_id,
+            annotated_image_id,
+            analysis,
         )
     return {
         "inspectionId": inspection_id,
@@ -204,10 +238,52 @@ def _create_inspection_with_image(
     }
 
 
+# ==============================================================================
+# 3. 점검 이력 조회, 이미지 조회, 담당자 배정 및 삭제
+# ==============================================================================
+
+
+# 점검 이력 목록 조회 및 JSON 파싱
+def get_recent_history(user: dict, limit: int) -> list[dict]:
+    rows = inspection_repository.find_inspection_history(
+        limit=limit,
+        user_id=user["id"],
+        is_admin=user.get("role") == "ADMIN",
+    )
+    result = []
+    for row in rows:
+        detections = row.get("detections") or []
+        if isinstance(detections, str):
+            detections = json.loads(detections)
+        result.append(
+            {
+                "id": row["id"],
+                "title": row["title"],
+                "location": row["location"],
+                "address": row.get("address"),
+                "coordinates": row.get("coordinates"),
+                "capturedAt": row["capturedAt"],
+                "status": row["status"],
+                "priority": row["priority"],
+                "notes": row.get("notes"),
+                "aiOpinion": row.get("aiOpinion"),
+                "inspectorName": row["inspectorName"],
+                "wasteSummary": row["wasteSummary"],
+                "detections": detections,
+                "imageId": row.get("imageId"),
+                "assigneeId": row.get("assigneeId"),
+                "assigneeName": row.get("assigneeName"),
+            }
+        )
+    return result
+
+
+# 점검 원본/분석 이미지 파일 조회
 def get_history_image(inspection_id: int, user: dict, kind: str | None = None):
     return file_service.open_inspection_image(inspection_id, user, kind)
 
 
+# 점검 이력 단건 논리 삭제 (권한 검증 포함)
 def delete_history(inspection_id: int, user: dict) -> None:
     inspection = inspection_repository.find_accessible_inspection(
         inspection_id, user["id"], user.get("role") == "ADMIN"
@@ -224,16 +300,21 @@ def delete_history(inspection_id: int, user: dict) -> None:
         )
 
 
+# 현장 수거/조치 배정 가능한 작업자 목록 조회
 def get_assignees() -> list[dict]:
     return inspection_repository.find_active_assignees()
 
 
+# 점검 건 현장 조치 담당자 배정
 def assign_history(inspection_id: int, assignee_id: int, user: dict) -> dict:
     inspection = inspection_repository.find_accessible_inspection(
         inspection_id, user["id"], user.get("role") == "ADMIN"
     )
     if not inspection:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="점검 이력을 찾을 수 없습니다.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="점검 이력을 찾을 수 없습니다.",
+        )
 
     assignee = inspection_repository.find_active_user(assignee_id)
     if not assignee:
@@ -246,37 +327,16 @@ def assign_history(inspection_id: int, assignee_id: int, user: dict) -> dict:
     return {"inspectionId": inspection_id, "assignee": assignee}
 
 
-def _parse_legacy_coordinates(coordinates: str) -> tuple[float | None, float | None]:
-    try:
-        latitude, longitude = (float(value.strip()) for value in coordinates.split(",", 1))
-    except (AttributeError, TypeError, ValueError):
-        return None, None
-    if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
-        return None, None
-    return latitude, longitude
-
-
-def save_inspection(payload: InspectionSaveRequest, user: dict) -> dict:
-    latitude, longitude = _parse_legacy_coordinates(payload.coordinates)
-    request = InspectionCreateRequest(
-        image=payload.image,
-        title=payload.title,
-        location=payload.location_name,
-        address=payload.address,
-        notes=payload.notes,
-        latitude=latitude,
-        longitude=longitude,
-    )
-    return _create_inspection_with_image(request, user, status="DRAFT")
-
-
+# 저장된 원본 이미지를 기반으로 AI 재분석 실행 및 결과 갱신
 def reanalyze_inspection(inspection_id: int, user: dict) -> dict:
-    """Run AI again from the stored original and persist a new ANNOTATED image."""
     inspection = inspection_repository.find_accessible_inspection(
         inspection_id, user["id"], user.get("role") == "ADMIN"
     )
     if not inspection:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inspection history not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Inspection history not found.",
+        )
 
     stored_file, content_type = file_service.open_inspection_image(
         inspection_id, user, "ORIGINAL"
@@ -288,7 +348,10 @@ def reanalyze_inspection(inspection_id: int, user: dict) -> dict:
         stored_file.release_conn()
 
     if not image_bytes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original inspection image not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Original inspection image not found.",
+        )
 
     image_data_url = (
         f"data:{content_type};base64,"
@@ -309,7 +372,10 @@ def reanalyze_inspection(inspection_id: int, user: dict) -> dict:
         inspection_id, "ORIGINAL"
     )
     if original_image_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original inspection image metadata not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Original inspection image metadata not found.",
+        )
 
     # 기존 ANNOTATED 이미지 및 기존 탐지 결과 삭제/정리
     inspection_repository.clear_previous_analysis(inspection_id)
@@ -328,19 +394,25 @@ def reanalyze_inspection(inspection_id: int, user: dict) -> dict:
     }
 
 
+# ==============================================================================
+# 4. 재점검(Re-inspection) 및 라벨링 관리 서비스
+# ==============================================================================
+
+
+# 재점검 대상(DRAFT) 점검 목록 조회
 def get_reinspection_targets(user: dict) -> list[dict]:
     return inspection_repository.find_reinspection_targets(
         user["id"], user.get("role") == "ADMIN"
     )
 
 
+# 재점검 건 일괄 최종 승인 및 어노테이션 이미지 최신화 (REVIEW_REQUIRED 전환)
 def approve_reinspection_targets(inspection_ids: list[int], user: dict) -> dict:
     unique_ids = list(dict.fromkeys(inspection_ids))
     if not unique_ids:
         raise HTTPException(status_code=422, detail="승인할 점검을 선택해주세요.")
     pending_details = [
-        get_reinspection_detail(inspection_id, user)
-        for inspection_id in unique_ids
+        get_reinspection_detail(inspection_id, user) for inspection_id in unique_ids
     ]
     inspection_repository.finalize_reinspection_annotations(unique_ids)
     affected = inspection_repository.approve_reinspection_targets(
@@ -355,9 +427,14 @@ def approve_reinspection_targets(inspection_ids: list[int], user: dict) -> dict:
         _refresh_reinspection_annotated_image(
             inspection_id, detail.get("detections") or [], user
         )
-    return {"selectedCount": len(unique_ids), "affectedCount": affected, "status": "REVIEW_REQUIRED"}
+    return {
+        "selectedCount": len(unique_ids),
+        "affectedCount": affected,
+        "status": "REVIEW_REQUIRED",
+    }
 
 
+# 재점검 단건 상세 정보 조회
 def get_reinspection_detail(inspection_id: int, user: dict) -> dict:
     detail = inspection_repository.find_reinspection_detail(
         inspection_id, user["id"], user.get("role") == "ADMIN"
@@ -367,15 +444,93 @@ def get_reinspection_detail(inspection_id: int, user: dict) -> dict:
     return detail
 
 
+# 재점검 라벨링용 활성 폐기물 분류 목록 조회
 def get_reinspection_classes() -> list[dict]:
     return inspection_repository.find_active_waste_types()
 
 
+# 재점검 수정된 바운딩 박스를 반영하여 ANNOTATED 이미지 재생성 및 스토리지 갱신
+def _refresh_reinspection_annotated_image(
+    inspection_id: int, detections: list[dict], user: dict
+) -> int:
+    stored_file, content_type = file_service.open_inspection_image(
+        inspection_id, user, "ORIGINAL"
+    )
+    try:
+        image_bytes = stored_file.read()
+    finally:
+        stored_file.close()
+        stored_file.release_conn()
+    if not image_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Original inspection image not found.",
+        )
+    source_data_url = (
+        f"data:{content_type};base64,{base64.b64encode(image_bytes).decode('ascii')}"
+    )
+    rendered_detections = [
+        {
+            "className": detection.get("className") or "UNKNOWN",
+            "confidence": float(detection.get("confidence") or 0),
+            "bbox": [
+                float(detection.get("bboxX") or 0),
+                float(detection.get("bboxY") or 0),
+                float(detection.get("bboxWidth") or 0),
+                float(detection.get("bboxHeight") or 0),
+            ],
+        }
+        for detection in detections
+    ]
+    annotated_data = _render_annotated_image(source_data_url, rendered_detections)
+    stored = file_service.store_inspection_data_image(
+        annotated_data, user["id"], "ANNOTATED"
+    )
+    return inspection_repository.create_inspection_image(
+        inspection_id, "ANNOTATED", stored
+    )
+
+
+# 재점검 수동 라벨링 좌표 검증 및 저장
+def save_reinspection_annotations(inspection_id: int, payload, user: dict) -> dict:
+    detail = inspection_repository.find_reinspection_detail(
+        inspection_id, user["id"], user.get("role") == "ADMIN"
+    )
+    if not detail:
+        raise HTTPException(status_code=404, detail="재점검 대상을 찾을 수 없습니다.")
+    for box in payload.boxes:
+        x, y, width, height = box.bbox
+        if (
+            min(box.bbox) < 0
+            or max(box.bbox) > 1
+            or width <= 0
+            or height <= 0
+            or x + width > 1
+            or y + height > 1
+        ):
+            raise HTTPException(
+                status_code=422, detail="Bounding Box 좌표는 0~1 범위여야 합니다."
+            )
+    inspection_repository.save_reinspection_annotations(
+        inspection_id, payload.boxes, payload.deletedIds, user["id"]
+    )
+    return get_reinspection_detail(inspection_id, user)
+
+
+# ==============================================================================
+# 5. 재점검 AI 모델 카탈로그 및 아티팩트 관리
+# ==============================================================================
+
+
+# AI 모델 선택 및 관리 권한 검증
 def _require_reinspection_model_role(user: dict) -> None:
     if user.get("role") not in {"ADMIN", "MANAGER", "INSPECTOR"}:
-        raise HTTPException(status_code=403, detail="You do not have permission to select a model.")
+        raise HTTPException(
+            status_code=403, detail="You do not have permission to select a model."
+        )
 
 
+# 사용 가능한 AI 모델 목록 동기화 및 성능 순 정렬 반환
 def get_reinspection_models(user: dict) -> dict:
     _require_reinspection_model_role(user)
     try:
@@ -395,6 +550,7 @@ def get_reinspection_models(user: dict) -> dict:
     return catalog
 
 
+# 특정 점검 건에 적용할 AI 모델 선택 및 활성화
 def select_reinspection_model(inspection_id: int, model_id: str, user: dict) -> dict:
     _require_reinspection_model_role(user)
     get_reinspection_detail(inspection_id, user)
@@ -406,44 +562,13 @@ def select_reinspection_model(inspection_id: int, model_id: str, user: dict) -> 
     except Exception as error:
         raise ai_error_service.to_http_exception(error) from error
     model_catalog_repository.sync_model_catalog(catalog)
-    return {"inspectionId": inspection_id, "selectedModelId": catalog.get("selectedModelId") or selected_id}
+    return {
+        "inspectionId": inspection_id,
+        "selectedModelId": catalog.get("selectedModelId") or selected_id,
+    }
 
 
-def _refresh_reinspection_annotated_image(inspection_id: int, detections: list[dict], user: dict) -> int:
-    stored_file, content_type = file_service.open_inspection_image(inspection_id, user, "ORIGINAL")
-    try:
-        image_bytes = stored_file.read()
-    finally:
-        stored_file.close()
-        stored_file.release_conn()
-    if not image_bytes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Original inspection image not found.")
-    source_data_url = f"data:{content_type};base64,{base64.b64encode(image_bytes).decode("ascii")}"
-    rendered_detections = [{
-        "className": detection.get("className") or "UNKNOWN",
-        "confidence": float(detection.get("confidence") or 0),
-        "bbox": [float(detection.get("bboxX") or 0), float(detection.get("bboxY") or 0), float(detection.get("bboxWidth") or 0), float(detection.get("bboxHeight") or 0)],
-    } for detection in detections]
-    annotated_data = _render_annotated_image(source_data_url, rendered_detections)
-    stored = file_service.store_inspection_data_image(annotated_data, user["id"], "ANNOTATED")
-    return inspection_repository.create_inspection_image(inspection_id, "ANNOTATED", stored)
-
-
-def save_reinspection_annotations(inspection_id: int, payload, user: dict) -> dict:
-    detail = inspection_repository.find_reinspection_detail(
-        inspection_id, user["id"], user.get("role") == "ADMIN"
-    )
-    if not detail:
-        raise HTTPException(status_code=404, detail="재점검 대상을 찾을 수 없습니다.")
-    for box in payload.boxes:
-        x, y, width, height = box.bbox
-        if min(box.bbox) < 0 or max(box.bbox) > 1 or width <= 0 or height <= 0 or x + width > 1 or y + height > 1:
-            raise HTTPException(status_code=422, detail="Bounding Box 좌표는 0~1 범위여야 합니다.")
-    inspection_repository.save_reinspection_annotations(
-        inspection_id, payload.boxes, payload.deletedIds, user["id"]
-    )
-    return get_reinspection_detail(inspection_id, user)
-
+# 재점검에 사용된 AI 모델의 상세 메타데이터 및 클래스별 평가 지표 조회
 def get_reinspection_model_detail(inspection_id: int, user: dict) -> dict:
     inspection = get_reinspection_detail(inspection_id, user)
     catalog = ai_client.get_ai_models()
@@ -452,13 +577,19 @@ def get_reinspection_model_detail(inspection_id: int, user: dict) -> dict:
     if not model_id:
         model_name = inspection.get("modelName")
         matched = next(
-            (model for model in catalog.get("models", [])
-             if model.get("id") == model_name or model.get("name") == model_name),
+            (
+                model
+                for model in catalog.get("models", [])
+                if model.get("id") == model_name or model.get("name") == model_name
+            ),
             None,
         )
         model_id = matched.get("id") if matched else None
     if not model_id:
-        raise HTTPException(status_code=404, detail="해당 재점검에 사용된 모델 상세 정보를 찾을 수 없습니다.")
+        raise HTTPException(
+            status_code=404,
+            detail="해당 재점검에 사용된 모델 상세 정보를 찾을 수 없습니다.",
+        )
     try:
         detail = ai_client.get_ai_model_detail(model_id)
     except Exception as error:
@@ -472,6 +603,7 @@ def get_reinspection_model_detail(inspection_id: int, user: dict) -> dict:
     return detail
 
 
+# AI 모델 관련 아티팩트 파일(가중치/시각화 이미지 등) 데이터 반환
 def get_reinspection_model_artifact(inspection_id: int, artifact: str, user: dict):
     inspection = get_reinspection_detail(inspection_id, user)
     model_id = inspection.get("modelExternalId")
