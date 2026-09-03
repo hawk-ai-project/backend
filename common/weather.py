@@ -48,23 +48,28 @@ def determine_weather_event(
     sum_rn: float, max_ws: float, max_ta: float, min_ta: float
 ) -> tuple[str, str]:
     """
-    관측치(강수량, 풍속, 기온)를 종합 분석하여 내부 기상 명칭 및 표준 이벤트 코드를 판정합니다.
-
-    Returns:
-        tuple[str, str]: (날씨 명칭, weather_event 코드)
-        - weather_event 규격: HEAVY_RAIN(집중호우), TYPHOON(강풍/태풍), HEAT_WAVE(폭염),
-                             COLD_WAVE(한파), RAIN(비), CLEAR(맑음)
+    기상청 ASOS 관측치 종합 판별
+    반환값: (weather_desc, weather_event)
     """
+    # 1. 특보급 극한 기상 최우선 판별
+    if max_ws >= 14.0 and sum_rn >= 20.0:
+        return "태풍", "TYPHOON"
     if sum_rn >= 50.0:
         return "집중호우", "HEAVY_RAIN"
-    if max_ws >= 14.0 or (max_ws >= 10.0 and sum_rn >= 20.0):
-        return "강풍/태풍", "TYPHOON"
+    if max_ws >= 14.0:
+        return "강풍", "STRONG_WIND"
     if max_ta >= 33.0:
         return "폭염", "HEAT_WAVE"
     if min_ta <= -12.0:
         return "한파", "COLD_WAVE"
-    if sum_rn > 0.0:
+
+    # 2. 일반 강수 및 기상 상태 판별
+    if sum_rn >= 0.1:
+        # 영하 기온에서 강수가 발생한 경우 눈으로 분류
+        if max_ta <= 1.0:
+            return "눈", "SNOW"
         return "비", "RAIN"
+
     return "맑음", "CLEAR"
 
 
@@ -188,10 +193,17 @@ def fetch_realtime_weather(coordinates: str) -> dict:
                 "rainfall": rn1,
                 "weather_event": "HEAVY_RAIN",
             }
-        if rn1 > 0.0 or pty in ["1", "2", "5"]:
-            return {"weather": "비", "rainfall": rn1, "weather_event": "RAIN"}
+
         if pty in ["3", "7"]:
-            return {"weather": "눈", "rainfall": 0.0, "weather_event": "SNOW"}
+            return {"weather": "눈", "rainfall": rn1, "weather_event": "SNOW"}
+        elif pty in ["2", "6"]:
+            return {
+                "weather": "진눈깨비",
+                "rainfall": rn1,
+                "weather_event": "RAIN_SNOW",
+            }
+        elif rn1 > 0.0 or pty in ["1", "5"]:
+            return {"weather": "비", "rainfall": rn1, "weather_event": "RAIN"}
 
         return {"weather": "맑음", "rainfall": 0.0, "weather_event": "CLEAR"}
 
