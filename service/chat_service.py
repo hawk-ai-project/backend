@@ -246,6 +246,7 @@ def _generate(
     history: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     try:
+        # DB에서 구성한 근거 Context와 최근 대화를 AI Server에 함께 전달한다.
         return ai_client.generate_chat(context, message, history=history)
     except ai_client.AIServerError as error:
         raise ai_error_service.to_http_exception(error) from error

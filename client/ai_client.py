@@ -150,6 +150,8 @@ def _sanitize_remote_action(value: Any) -> dict[str, str] | None:
         return None
     action_type = value.get("type")
     path = value.get("path")
+
+    # 허용된 Navigation Action만 통과
     if action_type != "NAVIGATE" or path not in ALLOWED_NAVIGATION_PATHS:
         return None
     return {"type": "NAVIGATE", "path": path}
@@ -162,6 +164,7 @@ def generate_chat(
     history: list[dict[str, str]] | None = None,
     transport: httpx.BaseTransport | None = None,
 ) -> dict[str, Any]:
+    # 서버가 답변을 생성할 때 현재 Context와 대화 흐름을 함께 참조한다.
     data = _post_json(
         "/api/ai/chat",
         {"context": context, "message": message, "history": history or []},
@@ -202,6 +205,7 @@ def generate_board(
     *,
     transport: httpx.BaseTransport | None = None,
 ) -> dict[str, str]:
+    # 프런트 DTO를 AI 서버의 요청 필드에 맞춰 전달한다.
     data = _post_json(
         "/api/ai/board",
         {
@@ -216,6 +220,8 @@ def generate_board(
     draft = data.get("draft", data)
     if not isinstance(draft, dict):
         raise AIResponseError("AI 서버의 게시글 응답은 JSON 객체여야 합니다.")
+
+    # AI 게시글 응답의 필수 필드 검증
     result: dict[str, str] = {}
     for key in ("title", "summary", "content"):
         value = draft.get(key)

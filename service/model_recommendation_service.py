@@ -38,7 +38,10 @@ def _context(payload: ModelRecommendationRequest, user: dict) -> tuple[dict[str,
         )
         if reinspection is None:
             raise HTTPException(status_code=404, detail="검사 정보를 찾을 수 없습니다.")
+
     gpu = repository.find_gpu_status()
+
+    # 모델 성능과 점검 정보를 함께 추천 Context로 구성
     context = jsonable_encoder({
         "contextType": payload.contextType.value,
         "candidateModels": models,
@@ -59,6 +62,8 @@ def _score(payload: ModelRecommendationRequest, model: dict[str, Any], context: 
         precisions = [float(metrics[name].get("precision") or -1) for name in fp_classes if name in metrics]
         recall_score = sum(recalls) / len(recalls) if recalls else -1
         precision_score = sum(precisions) / len(precisions) if precisions else -1
+
+        # 미탐이 많으면 Recall을, 오탐이 많으면 Precision을 우선한다.
         if int(summary.get("falseNegative") or 0) >= int(summary.get("falsePositive") or 0):
             return (recall_score, precision_score, float(model.get("map50_95") or -1))
         return (precision_score, recall_score, float(model.get("map50_95") or -1))
@@ -130,6 +135,8 @@ def _validated_recommendations(result: dict[str, Any], models: list[dict[str, An
         if not isinstance(item, dict) or item.get("rank") != expected_rank:
             raise ValueError("recommendation ranks must be consecutive")
         model_id = item.get("modelId")
+
+        # 후보 외 모델 또는 중복 추천 차단
         if model_id not in by_id or model_id in seen:
             raise ValueError("recommendation model must be a unique candidate")
         label, summary = item.get("label"), item.get("summary")
@@ -165,6 +172,8 @@ def recommend(payload: ModelRecommendationRequest, user: dict) -> dict:
         recommendations = _validated_recommendations(result, models)
         chosen = recommendations[0]
         confidence = float(result.get("confidence", 0.5))
+
+        # 신뢰도는 API 계약의 0~1 범위를 벗어날 수 없다.
         if not 0 <= confidence <= 1:
             raise ValueError("invalid recommendation confidence")
         llm_warnings = _text_list(result.get("warnings", []))
@@ -182,6 +191,7 @@ def recommend(payload: ModelRecommendationRequest, user: dict) -> dict:
             "recommendations": recommendations,
         }
     except (KeyError, TypeError, ValueError):
+        # AI 응답 검증 실패 시 성능지표 기반 Fallback 사용
         return _fallback(payload, models, warnings, current, context)
 
 
