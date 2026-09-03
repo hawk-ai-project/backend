@@ -19,9 +19,12 @@ class ClimateSummary(BaseModel):
     topDetectedItem: ClimateTopWaste
 
 
+# 👈 [수정] rawDate와 rainfall 필드 선언 추가
 class ClimateTrend(BaseModel):
     date: str
     count: int
+    rawDate: Optional[str] = None
+    rainfall: float = 0.0
 
 
 class ClimateWasteDistribution(BaseModel):
