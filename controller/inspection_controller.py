@@ -12,6 +12,7 @@ from domain.inspection import (
     InspectionSaveRequest,
 )
 from service import inspection_service
+from common.weather import fetch_realtime_weather
 
 router = APIRouter(prefix="/api/inspection", tags=["현장점검"])
 
@@ -52,7 +53,11 @@ class ReinspectionModelSelectRequest(BaseModel):
 # 신규 현장 점검 건 생성
 @router.post("", response_model=InspectionCreateResponse)
 def create_inspection(payload: InspectionCreateRequest, auth=Depends(current_auth)):
-    return inspection_service.create_inspection(payload, auth[0])
+    coords = getattr(payload, "coordinates", None) or ""
+    weather_info = fetch_realtime_weather(coords) if coords else None
+    return inspection_service.create_inspection(
+        payload, auth[0], weather_info=weather_info
+    )
 
 
 # 업로드 이미지 실시간 AI 객체 탐지 분석
@@ -67,7 +72,11 @@ def save_inspection_record(
     payload: InspectionSaveRequest,
     auth=Depends(current_auth),
 ):
-    return inspection_service.save_inspection(payload, auth[0])
+    # 프론트엔드(InspectionInfo.jsx)에서 전달된 좌표 기반 실시간 기상청 초단기실황 수집
+    weather_info = fetch_realtime_weather(payload.coordinates or "")
+    return inspection_service.save_inspection(
+        payload, auth[0], weather_info=weather_info
+    )
 
 
 # ==============================================================================

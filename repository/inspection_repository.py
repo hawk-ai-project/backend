@@ -47,13 +47,16 @@ def find_or_create_location(
     )
 
 
-# 점검 기본 정보 생성 (KST 기준)
+# 점검 기본 정보 생성 (KST 기준, 기상청 실시간 정보 매핑 추가)
 def create_inspection(
     location_id: int,
     user_id: int,
     title: str,
     notes: str | None,
     status: str = "REVIEW_REQUIRED",
+    weather: str = "맑음",
+    rainfall: float = 0.0,
+    weather_event: str = "CLEAR",
 ) -> int:
 
     kst_now = datetime.utcnow() + timedelta(hours=9)
@@ -68,10 +71,13 @@ def create_inspection(
             notes, 
             status, 
             priority, 
+            weather,
+            rainfall,
+            weather_event,
             captured_at, 
             created_at, 
             updated_at
-        ) VALUES (%s, %s, %s, %s, %s, 'MEDIUM', %s, %s, %s)
+        ) VALUES (%s, %s, %s, %s, %s, 'MEDIUM', %s, %s, %s, %s, %s, %s)
         """,
         (
             location_id,
@@ -79,6 +85,9 @@ def create_inspection(
             title,
             notes,
             status,
+            weather,
+            rainfall,
+            weather_event,
             formatted_time,
             formatted_time,
             formatted_time,
@@ -202,7 +211,7 @@ def save_detection_result(
                         waste_type_id, 
                         confidence, 
                         bbox_x, 
-                        bbox_y,
+                        bbox_y, 
                         bbox_width, 
                         bbox_height
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -285,7 +294,7 @@ def find_active_user(user_id: int) -> dict[str, Any] | None:
         FROM users u
         JOIN roles r ON r.id = u.role_id
         WHERE u.id = %s 
-          AND u.deleted_at IS NULL
+          AND u.deleted_at IS NULL 
           AND u.status = 'ACTIVE' 
           AND r.code <> 'USER'
         """,
@@ -340,7 +349,6 @@ def assign_inspection(inspection_id: int, assignee_id: int, created_by: int) -> 
 
 # 현장 점검 위치 생성 및 점검 레코드 등록
 def insert_inspection_record(payload, user_id: int, ai_opinion: str):
-    # 프론트엔드에서 보낸 "35.1587,129.1604" 형태의 문자열을 반으로 쪼개서 위도/경도 숫자로 만들기
     lat, lon = 0.0, 0.0
     if payload.coordinates and "," in payload.coordinates:
         coords = payload.coordinates.split(",")
@@ -460,11 +468,11 @@ def find_reinspection_detections(run_id: int | None) -> list[dict[str, Any]]:
             COALESCE(awt.name_ko, wt.name_ko) AS className,
             d.confidence, 
             d.bbox_x AS bboxX, 
-            d.bbox_y AS bboxY,
+            d.bbox_y AS bboxY, 
             d.bbox_width AS bboxWidth, 
-            d.bbox_height AS bboxHeight,
+            d.bbox_height AS bboxHeight, 
             d.review_result AS reviewResult, 
-            d.review_status AS reviewStatus,
+            d.review_status AS reviewStatus, 
             d.reviewed_at AS reviewedAt,
             (d.reviewed_at IS NOT NULL OR d.actual_waste_type_id IS NOT NULL
              OR d.review_status <> 'UNLABELED') AS modified,
@@ -476,7 +484,7 @@ def find_reinspection_detections(run_id: int | None) -> list[dict[str, Any]]:
           AND d.review_status <> 'REJECTED' 
         ORDER BY d.id
         """,
-        (run_id),
+        (run_id,),
     )
     return rows if isinstance(rows, list) else []
 
@@ -683,7 +691,7 @@ def save_reinspection_annotations(
                             bbox_x = %s, 
                             bbox_y = %s, 
                             bbox_width = %s, 
-                            bbox_height = %s,
+                            bbox_height = %s, 
                             review_result = CASE 
                                 WHEN review_result = 'FALSE_NEGATIVE' THEN review_result 
                                 ELSE 'TRUE_POSITIVE' 
@@ -706,7 +714,7 @@ def save_reinspection_annotations(
                             bbox_x, 
                             bbox_y, 
                             bbox_width, 
-                            bbox_height,
+                            bbox_height, 
                             review_result, 
                             review_status, 
                             actual_waste_type_id, 
@@ -736,7 +744,6 @@ def clear_previous_analysis(inspection_id: int) -> None:
     connection = engine.raw_connection()
     try:
         with connection.cursor() as cursor:
-            # 해당 점검에 연결된 모든 detection_runs ID 조회
             cursor.execute(
                 """
                 SELECT 
@@ -751,7 +758,6 @@ def clear_previous_analysis(inspection_id: int) -> None:
 
             if run_ids:
                 placeholders = ",".join(["%s"] * len(run_ids))
-                # detection_runs에 연결된 detections 레코드 삭제
                 cursor.execute(
                     f"""
                     DELETE FROM detections 
@@ -759,7 +765,6 @@ def clear_previous_analysis(inspection_id: int) -> None:
                     """,
                     tuple(run_ids),
                 )
-                # detection_runs 레코드 삭제
                 cursor.execute(
                     f"""
                     DELETE FROM detection_runs 
@@ -768,7 +773,6 @@ def clear_previous_analysis(inspection_id: int) -> None:
                     tuple(run_ids),
                 )
 
-            # 이전 ANNOTATED (분석 이미지) 메타데이터 삭제
             cursor.execute(
                 """
                 DELETE FROM inspection_images 

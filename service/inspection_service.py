@@ -153,13 +153,17 @@ def analyze_image(payload: InspectionRequest) -> InspectionResponse:
         ) from error
 
 
-# 신규 점검 등록 엔트리포인트
-def create_inspection(payload: InspectionCreateRequest, user: dict) -> dict:
-    return _create_inspection_with_image(payload, user)
+# 신규 점검 등록 엔트리포인트 (weather_info 지원 추가)
+def create_inspection(
+    payload: InspectionCreateRequest, user: dict, weather_info: dict | None = None
+) -> dict:
+    return _create_inspection_with_image(payload, user, weather_info=weather_info)
 
 
-# 현장 점검 저장 (DRAFT 초안 상태로 등록)
-def save_inspection(payload: InspectionSaveRequest, user: dict) -> dict:
+# 현장 점검 저장 (DRAFT 초안 상태로 등록, weather_info 지원 추가)
+def save_inspection(
+    payload: InspectionSaveRequest, user: dict, weather_info: dict | None = None
+) -> dict:
     latitude, longitude = _parse_legacy_coordinates(payload.coordinates)
     request = InspectionCreateRequest(
         image=payload.image,
@@ -170,15 +174,18 @@ def save_inspection(payload: InspectionSaveRequest, user: dict) -> dict:
         latitude=latitude,
         longitude=longitude,
     )
-    return _create_inspection_with_image(request, user, status="DRAFT")
+    return _create_inspection_with_image(
+        request, user, status="DRAFT", weather_info=weather_info
+    )
 
 
-# 이미지 저장, 지오코딩 좌표 보정, 점검/탐지 결과 DB 일괄 저장 처리
+# 이미지 저장, 지오코딩 좌표 보정, 점검/탐지 결과 DB 일괄 저장 처리 (weather_info 파라미터 연동)
 def _create_inspection_with_image(
     payload: InspectionCreateRequest,
     user: dict,
     *,
     status: str = "REVIEW_REQUIRED",
+    weather_info: dict | None = None,
 ) -> dict:
     analysis_unavailable = False
     try:
@@ -209,12 +216,23 @@ def _create_inspection_with_image(
     location_id = inspection_repository.find_or_create_location(
         payload.location.strip(), user["id"], latitude, longitude, payload.address
     )
+
+    # 기상청 날씨 정보 파싱 (미전달 시 기본값 방어)
+    weather_desc = weather_info.get("weather", "맑음") if weather_info else "맑음"
+    rainfall = float(weather_info.get("rainfall", 0.0)) if weather_info else 0.0
+    weather_event = (
+        weather_info.get("weather_event", "CLEAR") if weather_info else "CLEAR"
+    )
+
     inspection_id = inspection_repository.create_inspection(
-        location_id,
-        user["id"],
-        payload.title.strip(),
-        payload.notes,
-        "FAILED" if analysis_unavailable else status,
+        location_id=location_id,
+        user_id=user["id"],
+        title=payload.title.strip(),
+        notes=payload.notes,
+        status="FAILED" if analysis_unavailable else status,
+        weather=weather_desc,
+        rainfall=rainfall,
+        weather_event=weather_event,
     )
     original_image_id = inspection_repository.create_inspection_image(
         inspection_id, "ORIGINAL", original
